@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import { MergeSortStepper } from '../algorithms/mergesort/Stepper.js'
 
-const DEFAULT = []
 
 export default function MergeSort() {
-  const [inputStr, setInputStr] = useState(DEFAULT.join(','))
-  const [stepper, setStepper] = useState(() => new MergeSortStepper(DEFAULT))
-  const [writePulse, setWritePulse] = useState(new Set()) // indices that flash
+  // Start with an empty input field
+  const [inputStr, setInputStr] = useState("");
+  // Stepper starts with an empty array (so nothing displayed until Reset)
+  const [stepper, setStepper] = useState(() => new MergeSortStepper([]));
+  const [writePulse, setWritePulse] = useState(new Set());
 
   const bump = () =>
     setStepper(Object.assign(Object.create(Object.getPrototypeOf(stepper)), stepper))
@@ -16,6 +17,9 @@ export default function MergeSort() {
   const activeRange = state.active ? [state.active.l, state.active.r] : null
   const micro = state.micro
   const microOn = micro.active
+  const topFrame = state.stack[state.stack.length - 1] || null
+  const onLeaf = !!(topFrame && topFrame.phase === 'divide' && topFrame.l === topFrame.r)
+
 
   const max = Math.max(1, ...values.map(v => Math.abs(v)))
   const heightPx = v => 12 + Math.round((Math.abs(v) / max) * 160)
@@ -31,48 +35,36 @@ export default function MergeSort() {
     setWritePulse(new Set())
   }
 
-  // Normal mode actions
+  // Actions
   const doDivide = () => {
-    if (stepper.stepDivide()) {
-      setWritePulse(new Set())
-      bump()
-    }
-  }
-
+    if (stepper.stepDivide()) { setWritePulse(new Set()); bump(); }
+  };
   const doConquer = () => {
     if (stepper.stepConquer()) {
-      const fresh = new Set(stepper.getState().lastWrites)
-      setWritePulse(fresh)
-      setTimeout(() => setWritePulse(new Set()), 220)
-      bump()
+      const fresh = new Set(stepper.getState().lastWrites);
+      setWritePulse(fresh); setTimeout(() => setWritePulse(new Set()), 160); bump();
     }
-  }
-
-  // Micro (Explain) actions
-  const startExplain = () => {
-    if (stepper.startMicro()) {
-      setWritePulse(new Set())
-      bump()
+  };
+  const doCombine = () => {
+    if (stepper.stepCombine()) {
+      const fresh = new Set(stepper.getState().lastWrites);
+      setWritePulse(fresh); setTimeout(() => setWritePulse(new Set()), 220); bump();
     }
-  }
+  };
 
+
+  // Explain path
+  const startExplain = () => { if (stepper.startMicro()) { setWritePulse(new Set()); bump() } }
   const nextMicro = () => {
     if (stepper.stepMicro()) {
-      // staged: arr not changed yet; we still give a tiny pulse feedback on where it will write
-      const fresh = new Set(stepper.getState().lastWrites)
-      setWritePulse(fresh)
-      setTimeout(() => setWritePulse(new Set()), 180)
-      bump()
+      // During explain, pulse the two compared bars (handled in render), not target writes
+      setWritePulse(new Set()); bump()
     }
   }
-
   const finishMicro = () => {
-    // Skip the staged path and perform the real merge now
     if (stepper.exitMicroDiscard()) {
       const fresh = new Set(stepper.getState().lastWrites)
-      setWritePulse(fresh)
-      setTimeout(() => setWritePulse(new Set()), 220)
-      bump()
+      setWritePulse(fresh); setTimeout(() => setWritePulse(new Set()), 220); bump()
     }
   }
 
@@ -94,38 +86,47 @@ export default function MergeSort() {
         </div>
 
         <div className="text-sm text-gray-600">
-          {state.done ? 'Status: Done (sorted)'
-            : `Status: Working — last action: ${state.lastAction ?? '—'}`}
+          {state.done ? (
+            'Status: Done (sorted)'
+          ) : (
+            <>
+              Status: Working — last action: {state.lastAction ?? '—'}
+              { !microOn && onLeaf && (
+                <span className="ml-2 text-emerald-700">
+                  • Minimum subproblem reached at index {topFrame.l}. Press <strong>Conquer</strong> to mark as a sub-solution.
+                </span>
+              )}
+            </>
+          )}
         </div>
 
-        {/* Main bar chart — FROZEN during micro. No opacity/height tricks. */}
+
+        {/* Bars (frozen during explain) */}
         <div className="w-full h-56 flex items-end gap-1 rounded-md p-3 bg-white border">
           {values.map((v, i) => {
             const inActive = activeRange && i >= activeRange[0] && i <= activeRange[1]
 
-            // During micro mode, identify the two head indices being compared
+            // During explain: pulse the TWO compared heads
             const isProbeLeftMain  =
               microOn && micro.i < micro.left.length  && i === (micro.l + micro.i)
             const isProbeRightMain =
               microOn && micro.j < micro.right.length && i === (micro.m + 1 + micro.j)
 
-            // We only use writePulse when NOT in micro mode (to avoid confusion)
+            // Outside explain: pulse the real write indices (combine and leaf-conquer feedback)
             const pulseWrite = !microOn && writePulse.has(i)
 
             const color = inActive ? 'bg-yellow-400' : 'bg-slate-700'
-
-            // Pulse both compared bars during micro; keep colors distinct
             const probeRing =
               isProbeLeftMain  ? 'ring-4 ring-blue-400 ring-offset-2 animate-pulse'
               : isProbeRightMain ? 'ring-4 ring-rose-400 ring-offset-2 animate-pulse'
               : ''
-
-            // Normal (non-micro) write pulse for feedback on real merges
             const writeRing = pulseWrite ? 'ring-4 ring-purple-400 ring-offset-2' : ''
+
             return (
               <div key={i} className="flex-1 flex flex-col items-center justify-end">
                 <div
-                  className={['w-full rounded-t transition-all duration-300 ease-out', color, probeRing || writeRing].join(' ')}
+                  className={['w-full rounded-t transition-all duration-300 ease-out',
+                              color, (probeRing || writeRing)].join(' ')}
                   style={{ height: heightPx(v) }}
                   title={`${v}`}
                 />
@@ -135,7 +136,7 @@ export default function MergeSort() {
           })}
         </div>
 
-        {/* Controls */}
+        {/* Controls: Divide / Conquer (leaf) / Combine (merge) */}
         {!microOn ? (
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -145,19 +146,31 @@ export default function MergeSort() {
             >
               Divide
             </button>
+
             <button
-              className="px-4 py-2 rounded bg-purple-600 text-white disabled:opacity-50"
+              className="px-4 py-2 rounded bg-teal-600 text-white disabled:opacity-50"
               onClick={doConquer}
               disabled={!stepper.canConquer() || state.done}
+              title="Mark a size-1 subproblem as a sub-solution"
             >
               Conquer
             </button>
-            {/* Explain only appears when relevant */}
+
+            <button
+              className="px-4 py-2 rounded bg-purple-600 text-white disabled:opacity-50"
+              onClick={doCombine}
+              disabled={!stepper.canCombine() || state.done}
+              title="Combine (merge) two solved halves"
+            >
+              Combine
+            </button>
+
+            {/* Explain appears only when current combine is a 2v2 */}
             {!state.done && stepper.canExplainMerge() && (
               <button
                 className="px-4 py-2 rounded bg-amber-600 text-white"
                 onClick={startExplain}
-                title="Show a step-by-step of this particular merge"
+                title="Explain this specific merge step by step"
               >
                 Explain this merge
               </button>
@@ -178,41 +191,35 @@ export default function MergeSort() {
             <button
               className="px-4 py-2 rounded bg-gray-800 text-white"
               onClick={finishMicro}
-              title="Skip the staged explanation and finish this merge now"
+              title="Skip the staged steps and finish this merge now"
             >
               Finish merge
             </button>
           </div>
         )}
 
-        {/* Explainer panel */}
+        {/* Explain panel */}
         {microOn && (
           <div className="rounded-md border bg-white p-3 space-y-3">
-            {/* Narration */}
             <div className="text-sm text-gray-700">
               {micro.done
-                ? 'Merge complete! “Finish merge” will now apply it above.'
+                ? 'Staged result complete. “Finish merge” will now apply it instantly.'
                 : (() => {
                     const leftVal  = micro.i < micro.left.length  ? micro.left[micro.i]  : '—'
                     const rightVal = micro.j < micro.right.length ? micro.right[micro.j] : '—'
-                    return `Compare ${leftVal} (left) vs ${rightVal} (right) → place the smaller into the output.`
+                    return `Compare ${leftVal} (left) vs ${rightVal} (right) → place the smaller next.`
                   })()}
             </div>
 
-            {/* Left run */}
             <div>
-              <div className="text-xs text-gray-500 mb-1">Left Subarray</div>
+              <div className="text-xs text-gray-500 mb-1">Left run</div>
               <div className="flex gap-2">
                 {micro.left.map((v, idx) => {
                   const isHead = idx === micro.i
                   return (
-                    <div
-                      key={idx}
-                      className={[
-                        "px-3 py-1 rounded border text-gray-900",
-                        isHead ? "outline outline-2 outline-blue-500" : ""
-                      ].join(" ")}
-                    >
+                    <div key={idx}
+                         className={['px-3 py-1 rounded border text-gray-900',
+                                     isHead ? 'outline outline-2 outline-blue-500' : ''].join(' ')}>
                       {v}
                     </div>
                   )
@@ -220,20 +227,15 @@ export default function MergeSort() {
               </div>
             </div>
 
-            {/* Right run */}
             <div>
-              <div className="text-xs text-gray-500 mb-1">Right Subarray</div>
+              <div className="text-xs text-gray-500 mb-1">Right run</div>
               <div className="flex gap-2">
                 {micro.right.map((v, idx) => {
                   const isHead = idx === micro.j
                   return (
-                    <div
-                      key={idx}
-                      className={[
-                        "px-3 py-1 rounded border text-gray-900",
-                        isHead ? "outline outline-2 outline-rose-500" : ""
-                      ].join(" ")}
-                    >
+                    <div key={idx}
+                         className={['px-3 py-1 rounded border text-gray-900',
+                                     isHead ? 'outline outline-2 outline-rose-500' : ''].join(' ')}>
                       {v}
                     </div>
                   )
@@ -241,21 +243,17 @@ export default function MergeSort() {
               </div>
             </div>
 
-            {/* Staged output */}
             <div>
-              <div className="text-xs text-gray-500 mb-1">Output</div>
+              <div className="text-xs text-gray-500 mb-1">Staged output</div>
               <div className="flex gap-2">
                 {Array.from({ length: micro.r - micro.l + 1 }).map((_, idx) => {
                   const filled = idx < micro.out.length
-                  const val = filled ? micro.out[idx] : '-'
+                  const val = filled ? micro.out[idx] : '·'
                   return (
-                    <div
-                      key={idx}
-                      className={[
-                        "px-3 py-1 rounded border min-w-10 text-center",
-                        filled ? "bg-emerald-50 border-emerald-400 text-gray-900" : "bg-gray-50 text-gray-500"
-                      ].join(" ")}
-                    >
+                    <div key={idx}
+                         className={['px-3 py-1 rounded border min-w-10 text-center',
+                                     filled ? 'bg-emerald-50 border-emerald-400 text-gray-900'
+                                            : 'bg-gray-50 text-gray-500'].join(' ')}>
                       {val}
                     </div>
                   )
@@ -278,3 +276,4 @@ export default function MergeSort() {
     </div>
   )
 }
+
