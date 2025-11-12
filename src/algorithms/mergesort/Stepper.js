@@ -76,7 +76,7 @@ export class MergeSortStepper {
     if (!t || t.phase !== 'merge') return false;
     const leftSize  = t.m - t.l + 1;
     const rightSize = t.r - (t.m + 1) + 1;
-    return leftSize === 2 && rightSize === 2;
+    return (leftSize === 2 && rightSize === 2) || (leftSize === 3 && rightSize === 2) || (leftSize === 2 && rightSize === 3) || (leftSize === 4 && rightSize === 4) || (leftSize === 5 && rightSize === 5);
   }
 
   // Start staged micro merge (does NOT mutate this.arr)
