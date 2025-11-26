@@ -9,7 +9,7 @@ export class MergeSortStepper {
     this.lastWrites = [];
     this.micro = null;
 
-    // NEW: on reset/construct, highlight the whole array
+    // on reset/construct, highlight the whole array
     if (this.arr.length) this.active = { l: 0, r: this.arr.length - 1, mode: 'ready' };
     if (this.arr.length) this._highlightTopRange(); // highlight whole array on Reset
   }
@@ -28,13 +28,13 @@ export class MergeSortStepper {
   _highlightTopRange() {
     const t = this.top();
     if (!t) { this.active = null; return; }
-    // Show divide frames as a full yellow segment
+    // Show divide frames 
     const mode = (t.phase === 'divide') ? 'dividing' : 'ready';
     this.active = { l: t.l, r: t.r, mode };
   }
 
 
-  // DIVIDE: split and pre-highlight the left child (so a second Divide shows the leaf)
+  // divide: split and pre-highlight the left child (so a second divide shows the leaf)
   canDivide() {
     if (this.isEmpty() || this.micro) return false;
     const t = this.top();
@@ -55,7 +55,7 @@ export class MergeSortStepper {
     return true;
   }
 
-  // CONQUER: pop a size-1 divide frame (leaf → sub-solution), then pre-highlight what's next
+  // conquer: pop a size-1 divide frame (leaf → sub-solution), then pre-highlight what's next
   canConquer() {
     if (this.isEmpty() || this.micro) return false;
     const t = this.top();
@@ -65,12 +65,12 @@ export class MergeSortStepper {
     if (!this.canConquer()) return false;
     const { l } = this.stack.pop(); // l==r
     this.lastAction = 'conquer-leaf';
-    this.lastWrites = [l];          // tiny pulse feedback on that leaf
+    this.lastWrites = [l];          
     this._updateActiveToTop('leaf-ready'); // immediately highlight next target
     return true;
   }
 
-  // COMBINE: perform the actual merge when the top frame is a merge
+  // combine: perform the actual merge when the top frame is a merge
   canCombine() {
     if (this.isEmpty() || this.micro) return false;
     const t = this.top();
@@ -91,7 +91,7 @@ export class MergeSortStepper {
   }
 
 
-  // ---- Explain path (unchanged from your working version) ----
+  // explain merges
   canExplainMerge() {
     if (this.micro || this.isEmpty()) return false;
     const t = this.top();
@@ -144,18 +144,14 @@ export class MergeSortStepper {
     const { l, m, r } = this.micro;
     this.micro = null;
 
-    // Your merge function name:
-    const writes = merge(this.arr, l, m, r); // (not mergeInPlaceWithWrites)
+    const writes = merge(this.arr, l, m, r);
 
-    // Consume the merge frame
     this.stack.pop();
 
-    // Optional: briefly show the merged segment
     this.active = { l, r, mode: 'merging' };
     this.lastAction = 'finished-explain';
     this.lastWrites = Array.isArray(writes) ? writes.slice() : [];
 
-    // IMPORTANT: now highlight whatever’s next (e.g., the full right side)
     this._highlightTopRange();
     return true;
   }
@@ -180,19 +176,3 @@ export class MergeSortStepper {
     };
   }
 }
-
-/*
-stepDivide() {
-    if (!this.canDivide()) return false;
-    const { l, r } = this.stack.pop();
-    const m = Math.floor((l + r) / 2);
-    // push reverse so left gets handled next (LIFO)
-    this.stack.push({ l, r, phase: 'merge', m });
-    this.stack.push({ l: m + 1, r, phase: 'divide' });
-    this.stack.push({ l, r: m, phase: 'divide' });
-    this.active = { l, r, mode: 'dividing' };
-    this.lastAction = 'divide';
-    this.lastWrites = [];
-    return true;
-  }
-    */
