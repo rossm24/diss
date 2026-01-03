@@ -44,7 +44,7 @@ export class MergeSortStepper {
     if (!this.canDivide()) return false;
     const { l, r } = this.stack.pop();
     const m = Math.floor((l + r) / 2);
-    // push in reverse order so the LEFT child is processed next
+    // push in reverse order so the left child is processed next
     this.stack.push({ l, r, phase: 'merge', m });       // later
     this.stack.push({ l: m + 1, r, phase: 'divide' });  // then right
     this.stack.push({ l, r: m, phase: 'divide' });      // next: left (on top)
