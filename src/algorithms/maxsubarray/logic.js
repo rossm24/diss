@@ -9,6 +9,7 @@ export function makeInitialState(arr) {
     nextId: 1,
     activeId: rootId,     // what we focus in UI
     lastAction: null,     // { type, nodeId, details }
+    phase: "divide", // "divide" | "conquer" | "combine" | "done"
   };
 }
 
@@ -67,11 +68,34 @@ function isLeaf(n) {
   return n.l === n.r;
 }
 
+export function advancePhaseIfNeeded(state) {
+  const root = state.nodes[state.rootId];
+
+  if (state.phase === "divide") {
+    if (findNextDivideTarget(state) == null) return { ...state, phase: "conquer" };
+  }
+
+  if (state.phase === "conquer") {
+    if (findNextConquerTarget(state) == null) return { ...state, phase: "combine" };
+  }
+
+  if (state.phase === "combine") {
+    if (root?.status === "solved" || findNextCombineTarget(state) == null) {
+      return { ...state, phase: "done" };
+    }
+  }
+
+  return state;
+}
+
+
 // steps
 
 export function stepDivide(state) {
+  if (state.phase !== "divide") return state;
+
   const targetId = findNextDivideTarget(state);
-  if (targetId == null) return state;
+  if (targetId == null) return advancePhaseIfNeeded(state);
 
   const nodes = { ...state.nodes };
   const n = nodes[targetId];
@@ -91,18 +115,22 @@ export function stepDivide(state) {
     status: "split",
   };
 
-  return {
+  const next = {
     ...state,
     nodes,
     nextId: state.nextId + 2,
     activeId: targetId,
     lastAction: { type: "DIVIDE", nodeId: targetId, details: { mid, leftId, rightId } },
   };
+
+  return advancePhaseIfNeeded(next);
 }
 
 export function stepConquer(state) {
+  if (state.phase !== "conquer") return state;
+
   const targetId = findNextConquerTarget(state);
-  if (targetId == null) return state;
+  if (targetId == null) return advancePhaseIfNeeded(state);
 
   const nodes = { ...state.nodes };
   const n = nodes[targetId];
@@ -124,17 +152,21 @@ export function stepConquer(state) {
     summary,
   };
 
-  return {
+  const next = {
     ...state,
     nodes,
     activeId: targetId,
     lastAction: { type: "CONQUER", nodeId: targetId, details: { x } },
   };
+
+  return advancePhaseIfNeeded(next);
 }
 
 export function stepCombine(state) {
+  if (state.phase !== "combine") return state;
+
   const targetId = findNextCombineTarget(state);
-  if (targetId == null) return state;
+  if (targetId == null) return advancePhaseIfNeeded(state);
 
   const nodes = { ...state.nodes };
   const n = nodes[targetId];
@@ -210,21 +242,23 @@ export function stepCombine(state) {
     chosen: bestCase,
   };
 
-  return {
+  const next = {
     ...state,
     nodes,
     activeId: targetId,
     lastAction: { type: "COMBINE", nodeId: targetId, details },
   };
+
+  return advancePhaseIfNeeded(next);
 }
 
 // convenience for UI buttons
 export function canDivide(state) {
-  return findNextDivideTarget(state) != null;
+  return state.phase === "divide" && findNextDivideTarget(state) != null;
 }
 export function canConquer(state) {
-  return findNextConquerTarget(state) != null;
+  return state.phase === "conquer" && findNextConquerTarget(state) != null;
 }
 export function canCombine(state) {
-  return findNextCombineTarget(state) != null;
+  return state.phase === "combine" && findNextCombineTarget(state) != null;
 }

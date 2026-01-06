@@ -14,6 +14,7 @@ export default function App(){
 import React, { useState } from 'react'
 import MergeSort from './components/MergeSort.jsx'
 import QuickSort from './components/QuickSort.jsx'
+import MaxSubarray from './components/MaxSubarray.jsx'
 
 export default function App() {
   const [algo, setAlgo] = useState('merge')
@@ -49,12 +50,25 @@ export default function App() {
           >
             Quick Sort
           </button>
+
+          <button
+            onClick={() => setAlgo('maxsub')}
+            className={
+              'px-4 py-2 text-sm font-medium ' +
+              (algo === 'maxsub'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-slate-50')
+            }
+          >
+            Max Subarray
+          </button>
         </div>
 
         {/* Active algorithm view */}
         <div>
           {algo === 'merge' && <MergeSort />}
           {algo === 'quick' && <QuickSort />}
+          {algo === 'maxsub' && <MaxSubarray />}
         </div>
       </div>
     </div>
