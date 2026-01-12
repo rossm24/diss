@@ -129,11 +129,45 @@ export function makeInitialState({ nPoints = 25, seed = null } = {}) {
     problems,
     activeProblemId: null,
     hullEdges: [],
+    traceEdges: [],
+    traceTriangles: [],
+    removed: {},
     lastAction: null,
     finished: false,
     meta: { nPoints, seed: usedSeed, minId, maxId },
   };
 }
+
+export function makeStateFromPoints(points) {
+  // points: [{id,x,y}] in [0,1]
+  const pointsById = {};
+  for (const p of points) pointsById[p.id] = p;
+
+  const { minId, maxId } = findMinMaxX(points);
+  const allIds = points.map((p) => p.id);
+
+  const upper = idsLeftOfDirected(pointsById, minId, maxId, allIds);
+  const lower = idsLeftOfDirected(pointsById, maxId, minId, allIds);
+
+  return {
+    points,
+    pointsById,
+    nextProblemId: 2,
+    problems: [
+      { id: 0, aId: minId, bId: maxId, setIds: upper, pivotId: null, status: "todo" },
+      { id: 1, aId: maxId, bId: minId, setIds: lower, pivotId: null, status: "todo" },
+    ],
+    activeProblemId: null,
+    hullEdges: [],
+    traceEdges: [],
+    traceTriangles: [],
+    removed: {},
+    lastAction: null,
+    finished: false,
+    meta: { nPoints: points.length, seed: null, minId, maxId },
+  };
+}
+
 
 // ---------------- Step logic (Divide / Conquer / Combine) ----------------
 
@@ -179,9 +213,15 @@ export function stepDivide(state) {
     return { ...pr, pivotId: bestId, pivotDist: bestD, status: "pivoted" };
   });
 
+  const chosen = problems.find((p) => p.id === targetId);
+  const traceEdges = [
+  ...(state.traceEdges ?? []),
+  { aId: chosen.aId, bId: chosen.bId, type: "active" },    ];
+
   return {
     ...state,
     problems,
+    traceEdges,
     activeProblemId: targetId,
     lastAction: { type: "DIVIDE", problemId: targetId },
   };
@@ -197,6 +237,20 @@ export function stepConquer(state) {
   if (pivotId == null) return { ...state, lastAction: { type: "CONQUER_ERROR" } };
 
   const { s1, s2 } = splitOutsideSets(state.pointsById, aId, pivotId, bId, setIds);
+
+  // Points not in s1 or s2 (and not the pivot) are inside triangle A-P-B => discard
+  const s1Set = new Set(s1);
+  const s2Set = new Set(s2);
+
+  const discarded = [];
+  for (const id of setIds) {
+  if (id === pivotId) continue;
+  if (!s1Set.has(id) && !s2Set.has(id)) discarded.push(id);
+  }
+
+  const removed = { ...(state.removed ?? {}) };
+  for (const id of discarded) removed[id] = true;
+
 
   const leftProblem = {
     id: state.nextProblemId,
@@ -216,6 +270,17 @@ export function stepConquer(state) {
     status: "todo",
   };
 
+  const traceTriangles = [
+    ...(state.traceTriangles ?? []),
+    { aId, pId: pivotId, bId },
+  ];
+
+  const traceEdges = [
+    ...(state.traceEdges ?? []),
+    { aId, bId: pivotId, type: "split" },
+    { aId: pivotId, bId, type: "split" },
+  ];
+
   const problems = state.problems
     .filter((p) => p.id !== active.id)
     .concat([leftProblem, rightProblem]);
@@ -223,6 +288,9 @@ export function stepConquer(state) {
   return {
     ...state,
     problems,
+    traceTriangles,
+    traceEdges,
+    removed,
     nextProblemId: state.nextProblemId + 2,
     activeProblemId: null,
     lastAction: { type: "CONQUER", problemId: active.id },
@@ -256,3 +324,29 @@ export function stepCombine(state) {
 
   return next;
 }
+
+export function canDivide(state) {
+  if (state.finished) return false;
+  // can divide if there exists a todo problem with points AND we are not holding a pivoted active problem
+  const active = state.activeProblemId == null
+    ? null
+    : state.problems.find((p) => p.id === state.activeProblemId) || null;
+
+  if (active && active.status === "pivoted") return false;
+
+  return state.problems.some((p) => p.status === "todo" && p.setIds.length > 0);
+}
+
+export function canConquer(state) {
+  if (state.finished) return false;
+  const active = state.activeProblemId == null
+    ? null
+    : state.problems.find((p) => p.id === state.activeProblemId) || null;
+  return !!(active && active.status === "pivoted" && active.pivotId != null);
+}
+
+export function canCombine(state) {
+  if (state.finished) return false;
+  return state.problems.some((p) => p.status === "todo" && p.setIds.length === 0);
+}
+

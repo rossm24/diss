@@ -60,25 +60,32 @@ export default function QuickSort() {
   };
 
   const doDivide = () => {
-    if (stepper.canDivide() && stepper.stepDivide()) {
-      setWritePulse(new Set());
+    if (stepper.stepDivide()) {
+      const fresh = new Set(stepper.getState().lastWrites);
+      setWritePulse(fresh);
+      if (fresh.size > 0) setTimeout(() => setWritePulse(new Set()), 220);
       bump();
     }
   };
 
   const doConquer = () => {
-    if (stepper.canConquer() && stepper.stepConquer()) {
-      flashWritesFromState();
+    if (stepper.stepConquer()) {
+      const fresh = new Set(stepper.getState().lastWrites);
+      setWritePulse(fresh);
+      setTimeout(() => setWritePulse(new Set()), 220);
       bump();
     }
   };
 
   const doCombine = () => {
-    if (stepper.canCombine() && stepper.stepCombine()) {
-      flashWritesFromState(); // pulses whole [l,r]
+    if (stepper.stepCombine()) {
+      const fresh = new Set(stepper.getState().lastWrites);
+      setWritePulse(fresh);
+      setTimeout(() => setWritePulse(new Set()), 220);
       bump();
     }
   };
+
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
