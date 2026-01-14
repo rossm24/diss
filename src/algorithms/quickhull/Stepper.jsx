@@ -36,7 +36,7 @@ export default function QuickhullStepper({
 
 
   return (
-    <div className="bg-white border rounded-xl p-3">
+    <div className="bg-white border rounded-xl p-0 inline-block overflow-hidden">
       <svg
         width={width}
         height={height}

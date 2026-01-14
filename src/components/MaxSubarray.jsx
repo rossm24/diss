@@ -96,12 +96,12 @@ export default function MaxSubarray() {
         {/* Left: array + active segment */}
         <div className="col-span-12 lg:col-span-8 p-4 rounded-2xl shadow-sm border">
           <div className="mb-3">
-            <div className="font-semibold mb-2">Array</div>
+            
 
             <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                 <input
-                    className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border text-white"
+                    className="flex-1 border rounded px-3 py-2 text-white"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -111,23 +111,23 @@ export default function MaxSubarray() {
                 />
 
                 <button
-                    className="px-3 py-2 rounded-xl border hover:bg-gray-50 text-gray-900"
+                    className="px-3 py-2 rounded border text-white bg-blue-600 "
                     onClick={applyInput}
                 >
                     Start
                 </button>
 
                 <button
-                    className="px-3 py-2 rounded-xl border hover:bg-gray-50 text-gray-900"
+                    className="px-3 py-2 rounded border hover:bg-gray-50 text-gray-900"
                     onClick={() => {
-                    const newArr = Array.from({ length: 9 }, () => Math.floor(Math.random() * 11) - 5);
+                    const newArr = Array.from({ length: 8 }, () => Math.floor(Math.random() * 11) - 5);
                     setArr(newArr);
                     setInput(newArr.join(", "));
                     setInputError("");
                     resetTo(newArr);
                     }}
                 >
-                    Randomize
+                    Randomise
                 </button>
                 </div>
 

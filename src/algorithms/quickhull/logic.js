@@ -104,11 +104,33 @@ export function splitOutsideSets(pointsById, aId, pId, bId, setIds) {
 
 // ---------------- State init ----------------
 
+function emptyState(points, pointsById, usedSeed = null) {
+  return {
+    points,
+    pointsById,
+    nextProblemId: 0,
+    problems: [],
+    activeProblemId: null,
+    hullEdges: [],
+    traceEdges: [],
+    traceTriangles: [],
+    removed: {},
+    lastAction: null,
+    finished: true,
+    meta: { nPoints: points.length, seed: usedSeed, minId: null, maxId: null },
+  };
+}
+
+
 export function makeInitialState({ nPoints = 25, seed = null } = {}) {
   const { points, seed: usedSeed } = makeRandomPoints(nPoints, seed);
 
   const pointsById = {};
   for (const p of points) pointsById[p.id] = p;
+
+  if (points.length < 2) {
+    return emptyState(points, pointsById, usedSeed);
+  }
 
   const { minId, maxId } = findMinMaxX(points);
   const allIds = points.map((p) => p.id);
@@ -142,6 +164,10 @@ export function makeStateFromPoints(points) {
   // points: [{id,x,y}] in [0,1]
   const pointsById = {};
   for (const p of points) pointsById[p.id] = p;
+
+  if (points.length < 2) {
+    return emptyState(points, pointsById, null);
+  }
 
   const { minId, maxId } = findMinMaxX(points);
   const allIds = points.map((p) => p.id);

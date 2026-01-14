@@ -97,7 +97,7 @@ export default function QuickSort() {
             className="flex-1 border rounded px-3 py-2"
             value={inputStr}
             onChange={e => setInputStr(e.target.value)}
-            placeholder="e.g. 38,27,43,3,9,82,10"
+            placeholder="e.g. 38,27,43,3,9,42,10,21"
           />
           <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={reset}>
             Start
@@ -106,7 +106,7 @@ export default function QuickSort() {
 
         <div className="text-sm text-gray-600">
           {state.done ? (
-            'Status: Done (all subproblems solved)'
+            'Status: Done (sorted)'
           ) : (
             <>
               Status: Working — last action: {state.lastAction ?? '—'}

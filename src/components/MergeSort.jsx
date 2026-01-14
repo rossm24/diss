@@ -78,7 +78,7 @@ export default function MergeSort() {
             className="flex-1 border rounded px-3 py-2"
             value={inputStr}
             onChange={e => setInputStr(e.target.value)}
-            placeholder="e.g. 38,27,43,3,9,82,10"
+            placeholder="e.g. 38,27,43,3,9,42,10,21"
           />
           <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={reset}>
             Start

@@ -26,7 +26,7 @@ function secondaryBtn() {
 }
 
 export default function Quickhull() {
-  const [state, setState] = useState(() => makeInitialState({ nPoints: 30 }));
+  const [state, setState] = useState(() => makeInitialState({ nPoints: 0 }));
   const [editMode, setEditMode] = useState(false);
 
   const dOk = canDivide(state);
@@ -77,7 +77,7 @@ export default function Quickhull() {
             onClick={() => setState(makeInitialState({ nPoints: 30 }))}
             title="Generate a new random point set"
         >
-            Randomize
+            Randomise
         </button>
 
         <button
@@ -85,7 +85,7 @@ export default function Quickhull() {
             onClick={() => setEditMode((v) => !v)}
             title="Click on the canvas to add points"
         >
-            {editMode ? "Stop placing points" : "Place points"}
+            {editMode ? "Stop Placing Points" : "Place Points"}
         </button>
 
         <button
@@ -119,7 +119,7 @@ export default function Quickhull() {
         </div>
 
         <div className="pt-2 text-xs text-slate-600">
-          Note: Quickhull doesn’t split at the midpoint. It starts with the leftmost and rightmost points, then repeatedly
+          Note: Quickhull starts with the leftmost and rightmost points, then repeatedly
           chooses the farthest point from the current boundary edge.
         </div>
       </div>

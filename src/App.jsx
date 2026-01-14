@@ -16,6 +16,7 @@ import MergeSort from './components/MergeSort.jsx'
 import QuickSort from './components/QuickSort.jsx'
 import MaxSubarray from './components/MaxSubarray.jsx'
 import Quickhull from './components/Quickhull.jsx'
+import CPoP from './components/cpop.jsx'
 
 export default function App() {
   const [algo, setAlgo] = useState('merge')
@@ -75,6 +76,18 @@ export default function App() {
           >
             Quickhull
           </button>
+
+          <button
+            onClick={() => setAlgo('cpop')}
+            className={
+              'px-4 py-2 text-sm font-medium border-l ' +
+              (algo === 'cpop'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-slate-50')
+            }
+          >
+            CPOP
+          </button>
         </div>
 
         {/* Active algorithm view */}
@@ -83,6 +96,7 @@ export default function App() {
           {algo === 'quick' && <QuickSort />}
           {algo === 'maxsub' && <MaxSubarray />}
           {algo === 'quickhull' && <Quickhull />}
+          {algo === 'cpop' && <CPoP />}
         </div>
       </div>
     </div>
