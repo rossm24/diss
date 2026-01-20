@@ -41,7 +41,7 @@ export default function MaxSubarray() {
       .filter(Boolean);
 
     const nums = tokens.map((t) => Number(t));
-    if (tokens.length === 0) return { ok: false, error: "Please enter at least one number." };
+    if (tokens.length < 2) return { ok: false, error: "Please enter at least two numbers." };
     if (nums.some((n) => Number.isNaN(n))) return { ok: false, error: "Only numbers are allowed (use spaces/commas)." };
 
     return { ok: true, nums };
@@ -138,7 +138,7 @@ export default function MaxSubarray() {
     )}
 
     <div className="text-xs text-gray-600">
-      Tip: separate with commas or spaces. Negatives allowed.
+      Tip: Negative numbers allowed.
     </div>
   </div>
 </div>

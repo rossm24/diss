@@ -1,6 +1,4 @@
-// src/algorithms/cpop/logic.js
-
-// ---------- geometry helpers ----------
+// helpers for geomerty 
 export function dist2(a, b) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -12,6 +10,7 @@ export function clamp(v, lo, hi) {
 }
 
 function bruteForceBest(points, ids) {
+  if (ids.length < 2) return { best: null, comparisons: [] }; // guard 
   let best = null;
   const comparisons = [];
   for (let i = 0; i < ids.length; i++) {
@@ -28,11 +27,12 @@ function bruteForceBest(points, ids) {
 
 function pickMedianX(points, ids) {
   const sorted = [...ids].sort((i, j) => points[i].x - points[j].x);
-  const midIdx = Math.floor(sorted.length / 2);
-  const midId = sorted[midIdx];
-  const midX = points[midId].x;
-  return { midX, sortedByX: sorted, midId };
+  const mid = Math.floor(sorted.length / 2);
+
+  const midX = points[sorted[mid]].x;   
+  return { midX, sortedByX: sorted, mid };
 }
+
 
 function buildStrip(points, ids, midX, d2) {
   if (!Number.isFinite(d2)) return [];
@@ -42,11 +42,7 @@ function buildStrip(points, ids, midX, d2) {
   return strip;
 }
 
-/**
- * Classic strip check:
- * for each strip[i], compare to next up to 7 points by y-order.
- * Returns best crossing pair (or null).
- */
+// checks each point in strip against next up to 7 points
 function stripBest(points, stripIds, currentBestD2) {
   let best = null;
   let bestD2 = currentBestD2;
@@ -67,12 +63,8 @@ function stripBest(points, stripIds, currentBestD2) {
   return { best, comparisons };
 }
 
-// ---------- solver state ----------
-/**
- * points: array of {id, x, y}
- * We store points in a map-like array indexed by id for speed:
- * pointsById[id] = {id,x,y}
- */
+// solver state 
+
 export function makeInitialState(rawPoints = []) {
   const pointsById = [];
   for (const p of rawPoints) pointsById[p.id] = p;
@@ -140,7 +132,7 @@ function dfsOrder(nodes, startId = 0) {
   return out;
 }
 
-// Next segment to divide: first leaf with >3 points (in DFS order)
+// next segment to divide: first leaf with >3 points (in DFS order)
 function findNextDivideTarget(state) {
   const order = dfsOrder(state.nodes, 0);
   for (const id of order) {
@@ -151,18 +143,19 @@ function findNextDivideTarget(state) {
   return null;
 }
 
-// Next segment to conquer: first leaf with <=3 points and not solved
+// next segment to conquer: first leaf with <=3 points and not solved
 function findNextConquerTarget(state) {
   const order = dfsOrder(state.nodes, 0);
   for (const id of order) {
     const n = state.nodes[id];
     if (!n) continue;
-    if (isLeaf(n) && n.ids.length <= 3 && n.phase !== "done") return id;
+    if (isLeaf(n) && n.ids.length >= 2 && n.ids.length <= 3 && n.phase !== "done") return id;
   }
   return null;
 }
 
-// Next segment to combine: deepest parent whose children are done but it isn't
+
+// next segment to combine: deepest parent whose children are done but it isn't
 function findNextCombineTarget(state) {
   const order = dfsOrder(state.nodes, 0);
   // reverse so we combine bottom-up
@@ -188,7 +181,7 @@ function setGlobalBest(state, candidate) {
   }
 }
 
-// ---------- actions: Divide / Conquer / Combine ----------
+// divide conquer combine
 export function canDivide(state) {
   return findNextDivideTarget(state) != null;
 }
@@ -201,11 +194,10 @@ export function stepDivide(state) {
 
   const node = getNode(s, targetId);
 
-  const { midX, sortedByX } = pickMedianX(s.pointsById, node.ids);
-  const mid = Math.floor(sortedByX.length / 2);
-
+  const { midX, sortedByX, mid } = pickMedianX(s.pointsById, node.ids);
   const leftIds = sortedByX.slice(0, mid);
   const rightIds = sortedByX.slice(mid);
+
 
   const leftId = s.nextNodeId++;
   const rightId = s.nextNodeId++;
@@ -251,7 +243,7 @@ export function stepDivide(state) {
   node.stripComparisons = [];
   node.lastCompared = null;
 
-  // focus the node we just divided (or left child if you prefer)
+  // focus the node we just divided 
   s.activeNodeId = node.id;
 
   return s;
@@ -324,7 +316,7 @@ export function stepCombine(state) {
 }
 
 
-// ---------- utility: reset solver focus without deleting points ----------
+// reset solver but keep points if wanted 
 export function resetSolverKeepingPoints(state) {
   const rawPoints = Object.values(state.pointsById).filter(Boolean);
   return makeInitialState(rawPoints);

@@ -1,6 +1,4 @@
-// src/algorithms/quickhull/logic.js
-
-// ---------------- Geometry helpers ----------------
+// geometry helpers
 
 export function orient(a, b, p) {
   // cross((b-a),(p-a))
@@ -23,10 +21,9 @@ export function uniqueEdgeKey(aId, bId) {
   return aId < bId ? `${aId}-${bId}` : `${bId}-${aId}`;
 }
 
-// ---------------- Random points ----------------
+// randomise points
 
 export function makeRandomPoints(n = 25, seed = null) {
-  // simple deterministic LCG if seed supplied
   let s = seed == null ? Math.floor(Math.random() * 1e9) : seed >>> 0;
 
   const rand = () => {
@@ -102,7 +99,7 @@ export function splitOutsideSets(pointsById, aId, pId, bId, setIds) {
   return { s1, s2 };
 }
 
-// ---------------- State init ----------------
+// state init
 
 function emptyState(points, pointsById, usedSeed = null) {
   return {
@@ -135,13 +132,13 @@ export function makeInitialState({ nPoints = 25, seed = null } = {}) {
   const { minId, maxId } = findMinMaxX(points);
   const allIds = points.map((p) => p.id);
 
-  // Two directed problems: upper and lower chain
+  // two directed problems: upper and lower chain
   const upper = idsLeftOfDirected(pointsById, minId, maxId, allIds);
   const lower = idsLeftOfDirected(pointsById, maxId, minId, allIds);
 
   const problems = [
-    { id: 0, aId: minId, bId: maxId, setIds: upper, pivotId: null, status: "todo" },
-    { id: 1, aId: maxId, bId: minId, setIds: lower, pivotId: null, status: "todo" },
+    { id: 0, aId: minId, bId: maxId, setIds: upper, pivotId: null, status: "todo", chain: "upper" },
+    { id: 1, aId: maxId, bId: minId, setIds: lower, pivotId: null, status: "todo", chain: "lower" },
   ];
 
   return {
@@ -156,6 +153,7 @@ export function makeInitialState({ nPoints = 25, seed = null } = {}) {
     removed: {},
     lastAction: null,
     finished: false,
+    activeChain: null,
     meta: { nPoints, seed: usedSeed, minId, maxId },
   };
 }
@@ -180,8 +178,8 @@ export function makeStateFromPoints(points) {
     pointsById,
     nextProblemId: 2,
     problems: [
-      { id: 0, aId: minId, bId: maxId, setIds: upper, pivotId: null, status: "todo" },
-      { id: 1, aId: maxId, bId: minId, setIds: lower, pivotId: null, status: "todo" },
+      { id: 0, aId: minId, bId: maxId, setIds: upper, pivotId: null, status: "todo", chain: "upper" },
+      { id: 1, aId: maxId, bId: minId, setIds: lower, pivotId: null, status: "todo", chain: "lower" },
     ],
     activeProblemId: null,
     hullEdges: [],
@@ -190,12 +188,13 @@ export function makeStateFromPoints(points) {
     removed: {},
     lastAction: null,
     finished: false,
+    activeChain: null,
     meta: { nPoints: points.length, seed: null, minId, maxId },
   };
 }
 
 
-// ---------------- Step logic (Divide / Conquer / Combine) ----------------
+// step logic (Divide / Conquer / Combine) 
 
 function findNextDividableProblem(state) {
   for (let i = state.problems.length - 1; i >= 0; i--) {
@@ -249,6 +248,7 @@ export function stepDivide(state) {
     problems,
     traceEdges,
     activeProblemId: targetId,
+    activeChain: problems.find((p) => p.id === targetId)?.chain ?? null,
     lastAction: { type: "DIVIDE", problemId: targetId },
   };
 }
@@ -264,7 +264,7 @@ export function stepConquer(state) {
 
   const { s1, s2 } = splitOutsideSets(state.pointsById, aId, pivotId, bId, setIds);
 
-  // Points not in s1 or s2 (and not the pivot) are inside triangle A-P-B => discard
+  // points not in s1 or s2 (and not the pivot) are inside triangle A-P-B => discard
   const s1Set = new Set(s1);
   const s2Set = new Set(s2);
 
@@ -285,6 +285,7 @@ export function stepConquer(state) {
     setIds: s1,
     pivotId: null,
     status: "todo",
+    chain: active.chain,
   };
 
   const rightProblem = {
@@ -294,6 +295,7 @@ export function stepConquer(state) {
     setIds: s2,
     pivotId: null,
     status: "todo",
+    chain: active.chain,
   };
 
   const traceTriangles = [

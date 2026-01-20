@@ -1,4 +1,3 @@
-// src/algorithms/cpop/Stepper.jsx
 import React, { useMemo, useState } from "react";
 import {
   makeInitialState,
@@ -111,6 +110,30 @@ function buildTreeRows(nodes) {
   return rows;
 }
 
+function computeNodeBounds(nodes, nodeId, viewW) {
+  let xL = 0;
+  let xR = viewW;
+
+  let cur = nodes[nodeId];
+  while (cur && cur.parent != null) {
+    const parent = nodes[cur.parent];
+    if (!parent || parent.midX == null) break;
+
+    if (parent.left === cur.id) {
+      // cur is left child => right boundary is parent's split line
+      xR = Math.min(xR, parent.midX);
+    } else if (parent.right === cur.id) {
+      // cur is right child => left boundary is parent's split line
+      xL = Math.max(xL, parent.midX);
+    }
+
+    cur = parent;
+  }
+
+  return { xL, xR };
+}
+
+
 export default function CPoPStepper() {
   const [state, setState] = useState(() => makeInitialState([]));
 
@@ -162,12 +185,29 @@ export default function CPoPStepper() {
     [state.nodes, state.activeNodeId]
   );
 
+  const activeBestSet = useMemo(() => {
+    const n = state.nodes[state.activeNodeId];
+    if (!n?.best) return new Set();
+    return new Set([n.best.a, n.best.b]);
+  }, [state.nodes, state.activeNodeId]);
+
+  const globalBestSet = useMemo(() => {
+    if (!state.globalBest) return new Set();
+    return new Set([state.globalBest.a, state.globalBest.b]);
+  }, [state.globalBest]);
+
+  const activeBounds = useMemo(() => {
+    return computeNodeBounds(state.nodes, state.activeNodeId, view.w);
+  }, [state.nodes, state.activeNodeId, view.w]);
+
+
+
   const splitLines = useMemo(() => {
     const out = [];
     for (const n of state.nodes) {
       if (!n) continue;
       if (n.midX == null) continue;          // only nodes that have been divided
-      if (n.left == null || n.right == null) continue; // sanity
+      if (n.left == null || n.right == null) continue; // quick check for valid split 
 
       out.push({
         id: n.id,
@@ -178,38 +218,78 @@ export default function CPoPStepper() {
       });
     }
 
-    // optional: draw shallow (higher) lines on top or bottom
+    // draw shallow (higher) lines on top or bottom
     out.sort((a, b) => a.depth - b.depth);
     return out;
   }, [state.nodes, state.activeNodeId, ancestorSet]);
 
+  const combineShading = useMemo(() => {
+    const n = state.nodes[state.activeNodeId];
+    if (!n || n.left == null || n.right == null) return null;
+
+    const L = state.nodes[n.left];
+    const R = state.nodes[n.right];
+    if (!L || !R) return null;
+
+    const leftPts = L.ids.map((id) => state.pointsById[id]).filter(Boolean);
+    const rightPts = R.ids.map((id) => state.pointsById[id]).filter(Boolean);
+    if (!leftPts.length || !rightPts.length) return null;
+
+    const minXLeft = Math.min(...leftPts.map((p) => p.x));
+    const maxXLeft = Math.max(...leftPts.map((p) => p.x));
+    const minXRight = Math.min(...rightPts.map((p) => p.x));
+    const maxXRight = Math.max(...rightPts.map((p) => p.x));
+
+    return { minXLeft, maxXLeft, minXRight, maxXRight };
+  }, [state.nodes, state.activeNodeId, state.pointsById]);
+
+  const activeSegmentBounds = useMemo(() => {
+    const n = state.nodes[state.activeNodeId];
+    if (!n) return null;
+
+    const pts = n.ids.map((id) => state.pointsById[id]).filter(Boolean);
+    if (!pts.length) return null;
+
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    return { minX, maxX };
+  }, [state.nodes, state.activeNodeId, state.pointsById]);
+
+
+
 
   function addPointFromClick(evt) {
-    const svg = evt.currentTarget.getBoundingClientRect();
-    const x = evt.clientX - svg.left;
-    const y = evt.clientY - svg.top;
+    const svgEl = evt.currentTarget;
+    const rect = svgEl.getBoundingClientRect();
 
-    const id = (points.length ? Math.max(...points.map((p) => p.id)) : -1) + 1;
+    const scaleX = view.w / rect.width;
+    const scaleY = view.h / rect.height;
 
-    const p = {
-      id,
-      x: Math.round(x),
-      y: Math.round(y),
-    };
+    const x = (evt.clientX - rect.left) * scaleX;
+    const y = (evt.clientY - rect.top) * scaleY;
 
     setState((s) => {
+      const points = Object.values(s.pointsById).filter(Boolean);
+      const nextId = points.length ? Math.max(...points.map((p) => p.id)) + 1 : 0;
+
       const ns = structuredClone(s);
-      ns.pointsById[id] = p;
-      return ns;
+      ns.pointsById[nextId] = {
+        id: nextId,
+        x: Math.round(x),
+        y: Math.round(y),
+      };
+
+      return resetSolverKeepingPoints(ns);
     });
   }
+
 
   function randomPoints(n = 20) {
     setState((s) => {
       const ns = structuredClone(s);
+
       const existing = Object.values(ns.pointsById).filter(Boolean);
-      let nextId =
-        existing.length ? Math.max(...existing.map((p) => p.id)) + 1 : 0;
+      let nextId = existing.length ? Math.max(...existing.map((p) => p.id)) + 1 : 0;
 
       for (let i = 0; i < n; i++) {
         const id = nextId++;
@@ -219,7 +299,8 @@ export default function CPoPStepper() {
           y: Math.round(view.pad + Math.random() * (view.h - 2 * view.pad)),
         };
       }
-      return ns;
+
+      return resetSolverKeepingPoints(ns);
     });
   }
 
@@ -244,12 +325,21 @@ export default function CPoPStepper() {
   const midX = active?.midX;
   const showMidLine = active?.left != null && active?.midX != null;
 
-  const showStrip = active?.stripIds?.length > 0 && Number.isFinite(active.stripD2);
+  //const showStrip = active?.stripIds?.length > 0 && Number.isFinite(active.stripD2);
+
+  const childrenDone =
+    active?.left != null &&
+    active?.right != null &&
+    state.nodes[active.left]?.phase === "done" &&
+    state.nodes[active.right]?.phase === "done";
+
+  const showStrip = childrenDone && Number.isFinite(active?.stripD2) && active.stripD2 < Infinity;
+
 
   const stripHalfWidth = showStrip ? Math.sqrt(active.stripD2) : 0;
 
   return (
-    <div className="grid grid-cols-12 gap-4">
+    <div className="grid grid-cols-12 gap-4 text-slate-900">
       {/* LEFT: canvas */}
       <div className="col-span-8">
         <div className="p-3 rounded-2xl border bg-white">
@@ -262,7 +352,7 @@ export default function CPoPStepper() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button onClick={() => randomPoints(20)} className={`${secondaryBtn()} text-black px-3 py-2 rounded`}>
+              <button onClick={() => randomPoints(10)} className={`${secondaryBtn()} text-black px-3 py-2 rounded`}>
                     Randomise
                 </button>
                 <button onClick={clearPoints} className={`${secondaryBtn()} text-black px-3 py-2 rounded`}>
@@ -275,29 +365,53 @@ export default function CPoPStepper() {
           </div>
 
           <svg
-            width={view.w}
-            height={view.h}
-            className="w-full rounded-xl border bg-white cursor-crosshair"
+            viewBox={`0 0 ${view.w} ${view.h}`}
+            preserveAspectRatio="none"
+            className="block w-full h-[320px] rounded-xl border bg-white cursor-crosshair"
             onClick={addPointFromClick}
           >
             {/* strip band */}
-            {showStrip && showMidLine && (
+            {showStrip && (
               <rect
-                x={midX - stripHalfWidth}
+                x={active.midX - Math.sqrt(active.stripD2)}
                 y={0}
-                width={2 * stripHalfWidth}
+                width={2 * Math.sqrt(active.stripD2)}
                 height={view.h}
-                opacity={0.08}
+                fill="rgb(99,102,241)"
+                opacity={0.2}
               />
             )}
 
+            {/* shade the two child segments when active node is being combined */}
+            {childrenDone && active?.midX != null && (
+              <>
+                <rect
+                  x={activeBounds.xL}
+                  y={0}
+                  width={Math.max(0, active.midX - activeBounds.xL)}
+                  height={view.h}
+                  fill="rgb(99,102,241)"
+                  opacity={0.15}
+                />
+                <rect
+                  x={active.midX}
+                  y={0}
+                  width={Math.max(0, activeBounds.xR - active.midX)}
+                  height={view.h}
+                  fill="rgb(99,102,241)"
+                  opacity={0.15}
+                />
+              </>
+            )}
+
+
             {/* all median split lines */}
             {splitLines.map((ln) => {
-              // Make active line strongest, ancestors medium, others faint.
+              // bolden active line and fade others 
               const opacity = ln.isActive ? 0.85 : ln.isAncestor ? 0.35 : 0.15;
               const strokeWidth = ln.isActive ? 4 : ln.isAncestor ? 2.5 : 2;
 
-              // If you want depth to matter visually, slightly reduce opacity with depth:
+              // reduce opacity with depth 
               const depthFade = Math.max(0.06, 1 - ln.depth * 0.08);
 
               return (
@@ -322,6 +436,7 @@ export default function CPoPStepper() {
                 y1={globalBestSeg.A.y}
                 x2={globalBestSeg.B.x}
                 y2={globalBestSeg.B.y}
+                stroke="rgb(124,58,237)" // purple-600
                 strokeWidth={4}
                 opacity={0.15}
               />
@@ -334,6 +449,7 @@ export default function CPoPStepper() {
                 y1={nodeBestSeg.A.y}
                 x2={nodeBestSeg.B.x}
                 y2={nodeBestSeg.B.y}
+                stroke="rgb(16,185,129)" // emerald-500
                 strokeWidth={4}
                 opacity={0.5}
               />
@@ -354,30 +470,38 @@ export default function CPoPStepper() {
 
             {/* points */}
             {points.map((p) => {
-              const inActive = activeSet.has(p.id);
-              const inStrip = active?.stripIds?.includes(p.id);
-              const r = inActive ? 5 : 4;
-              const op = inActive ? 1 : 0.35;
+            const inActive = activeSet.has(p.id);
+            const inStrip = active?.stripIds?.includes(p.id);
 
-              return (
-                <g key={p.id}>
+            const isActiveBest = activeBestSet.has(p.id);
+            const isGlobalBest = globalBestSet.has(p.id);
+
+            const r = isActiveBest ? 7 : inActive ? 5 : 4;
+            const op = inActive ? 1 : 0.35;
+
+            return (
+              <g key={p.id}>
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={r}
+                  opacity={op}
+                  fill={isActiveBest ? "rgb(16,185,129)" : "black"}   // active best = green
+                  stroke={isGlobalBest ? "rgb(124,58,237)" : "none"} // global best outline = purple
+                  strokeWidth={isGlobalBest ? 3 : 0}
+                />
+                {inStrip && (
                   <circle
                     cx={p.x}
                     cy={p.y}
-                    r={r}
-                    opacity={op}
+                    r={r + 3}
+                    fill="rgb(99,102,241)"
+                    opacity={0.20}
                   />
-                  {inStrip && (
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r={r + 3}
-                      opacity={0.12}
-                    />
-                  )}
-                </g>
-              );
-            })}
+                )}
+              </g>
+            );
+          })}
           </svg>
 
           <div className="mt-3 flex items-center gap-2 disabled:opacity-50">
@@ -416,124 +540,7 @@ export default function CPoPStepper() {
           </div>
         </div>
 
-        {/* comparisons panel */}
-        <div className="mt-4 p-3 rounded-2xl border bg-white">
-          <div className="font-semibold mb-2">Active Node Details</div>
 
-          {!active ? (
-            <div className="text-sm opacity-70">No active node.</div>
-          ) : (
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <div className="p-3 rounded-xl border">
-                <div className="font-semibold mb-1">Subproblem</div>
-                <div>n = {active.ids.length}</div>
-                <div>phase = {active.phase}</div>
-                <div>midX = {active.midX == null ? "—" : Math.round(active.midX)}</div>
-              </div>
-
-              <div className="p-3 rounded-xl border">
-                <div className="font-semibold mb-1">Best in Node</div>
-                {active.best ? (
-                  <>
-                    <div>
-                      pair = ({active.best.a}, {active.best.b})
-                    </div>
-                    <div>d = {fmtD2(active.best.d2)}</div>
-                  </>
-                ) : (
-                  <div className="opacity-70">—</div>
-                )}
-              </div>
-
-              <div className="p-3 rounded-xl border">
-                <div className="font-semibold mb-1">Strip</div>
-                {showStrip ? (
-                  <>
-                    <div>d = {fmtD2(active.stripD2)}</div>
-                    <div>strip size = {active.stripIds.length}</div>
-                    <div className="opacity-70">(within |x-midX| &lt; d)</div>
-                  </>
-                ) : (
-                  <div className="opacity-70">—</div>
-                )}
-              </div>
-
-              <div className="col-span-3 p-3 rounded-xl border">
-                <div className="font-semibold mb-2">Comparisons (most recent)</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="text-xs opacity-70 mb-1">Base-case</div>
-                    <div className="text-xs">
-                      {active.baseComparisons.length
-                        ? active.baseComparisons.slice(0, 8).map((c, i) => (
-                            <div key={i}>
-                              ({c.a},{c.b}) d={fmtD2(c.d2)}
-                            </div>
-                          ))
-                        : <div className="opacity-60">—</div>}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs opacity-70 mb-1">Strip</div>
-                    <div className="text-xs">
-                      {active.stripComparisons.length
-                        ? active.stripComparisons.slice(0, 8).map((c, i) => (
-                            <div key={i}>
-                              ({c.a},{c.b}) d={fmtD2(c.d2)}
-                            </div>
-                          ))
-                        : <div className="opacity-60">—</div>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-2 text-xs opacity-70">
-                  Tip: If Divide/Conquer/Combine are disabled, check you pressed “Reset Solver”
-                  after adding points.
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT: recursion tree */}
-      <div className="col-span-4">
-        <div className="p-3 rounded-2xl border bg-white">
-          <div className="font-semibold mb-2">Recursion Tree</div>
-          <div className="text-xs opacity-70 mb-3">
-            Click a node to focus. Divide splits a node. Conquer solves leaves (≤3). Combine merges.
-          </div>
-
-          <div className="space-y-3">
-            {treeRows.map((row, depth) => (
-              <div key={depth} className="space-y-2">
-                <div className="text-xs font-semibold opacity-70">
-                  Depth {depth}
-                </div>
-                <div className="space-y-2">
-                  {row.map((nid) => {
-                    const node = state.nodes[nid];
-                    return (
-                      <NodeBadge
-                        key={nid}
-                        node={node}
-                        isActive={nid === state.activeNodeId}
-                        onClick={() =>
-                          setState((s) => ({ ...s, activeNodeId: nid }))
-                        }
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 text-xs opacity-70">
-            Workflow: add points → Reset Solver → Divide until leaves → Conquer (solves leaves) → Combine upward.
-          </div>
-        </div>
       </div>
     </div>
   );

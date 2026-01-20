@@ -1,4 +1,3 @@
-// src/algorithms/quickhull/Stepper.jsx
 import React from "react";
 
 function toPx(p, w, h, pad = 20) {
@@ -7,6 +6,11 @@ function toPx(p, w, h, pad = 20) {
     y: pad + (1 - p.y) * (h - 2 * pad),
   };
 }
+
+const CHAIN_COLOR = {
+    upper: "#2563eb", // blue-600
+    lower: "#f97316", // orange-500
+  };
 
 export default function QuickhullStepper({
   state,
@@ -32,6 +36,7 @@ export default function QuickhullStepper({
   for (const e of state.hullEdges) {
     hullPointIds.add(e.aId);
     hullPointIds.add(e.bId);
+
   }
 
 
@@ -58,7 +63,7 @@ export default function QuickhullStepper({
         }}
       >
 
-        {/* Trace triangles (history) */}
+        {/* Trace triangles */}
         {(state.traceTriangles ?? []).map((t, i) => {
           const a = state.pointsById[t.aId];
           const b = state.pointsById[t.bId];
@@ -81,7 +86,7 @@ export default function QuickhullStepper({
           );
         })}
 
-        {/* Trace edges (history) */}
+        {/* Trace edges */}
         {(state.traceEdges ?? []).map((e, i) => {
           const a = state.pointsById[e.aId];
           const b = state.pointsById[e.bId];
@@ -176,6 +181,10 @@ export default function QuickhullStepper({
 
           const isHullPoint = hullPointIds.has(p.id);
 
+          const chain = active?.chain ?? state.activeChain; // fallback
+          const chainFill = chain ? CHAIN_COLOR[chain] : "black";
+
+
 
           let r = 4;
           let opacity = 0.9;
@@ -183,9 +192,13 @@ export default function QuickhullStepper({
 
           if (active) opacity = isInActiveSet ? 1 : 0.25;
 
+          if (isInActiveSet && chain) {
+            fill = chainFill;
+          }
+
           if (isHullPoint) {
             r = 6;
-            fill = "#2563eb"; // blue
+            fill = "#00A36C"; // green
             opacity = 1;
           }
 
