@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, forwardRef, useImperativeHandle } from "react";
 import {
   makeInitialState,
   stepDivide,
@@ -13,7 +13,7 @@ import {
 
 function primaryBtn(enabled, colorClass) {
   return [
-    "px-3 py-2 rounded text-sm font-semibold text-white",
+    "px-4 py-2 rounded text-white disabled:opacity-50 disabled:cursor-not-allowed",
     "transition shadow-sm",
     colorClass,
     enabled
@@ -25,7 +25,7 @@ function primaryBtn(enabled, colorClass) {
 
 function secondaryBtn() {
   return [
-    "px-3 py-1.5 rounded border",
+    "px-4 py-2 rounded bg-white border text-slate-800 hover:bg-slate-50",
     "transition",
   ].join(" ");
 }
@@ -259,14 +259,15 @@ export default function CPoPStepper() {
 
 
   function addPointFromClick(evt) {
-    const svgEl = evt.currentTarget;
-    const rect = svgEl.getBoundingClientRect();
+    const svg = evt.currentTarget;
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
 
-    const scaleX = view.w / rect.width;
-    const scaleY = view.h / rect.height;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
 
-    const x = (evt.clientX - rect.left) * scaleX;
-    const y = (evt.clientY - rect.top) * scaleY;
+    const svgP = pt.matrixTransform(ctm.inverse());
 
     setState((s) => {
       const points = Object.values(s.pointsById).filter(Boolean);
@@ -275,13 +276,14 @@ export default function CPoPStepper() {
       const ns = structuredClone(s);
       ns.pointsById[nextId] = {
         id: nextId,
-        x: Math.round(x),
-        y: Math.round(y),
+        x: Math.round(svgP.x),
+        y: Math.round(svgP.y),
       };
 
       return resetSolverKeepingPoints(ns);
     });
   }
+
 
 
   function randomPoints(n = 20) {
@@ -338,209 +340,195 @@ export default function CPoPStepper() {
 
   const stripHalfWidth = showStrip ? Math.sqrt(active.stripD2) : 0;
 
-  return (
-    <div className="grid grid-cols-12 gap-4 text-slate-900">
-      {/* LEFT: canvas */}
-      <div className="col-span-8">
-        <div className="p-3 rounded-2xl border bg-white">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div>
-              <div className="font-semibold text-black">Closest Pair of Points</div>
-              <div className="text-xs text-black opacity-70">
-                Click to add points, or Randomise for a random set of points.
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button onClick={() => randomPoints(10)} className={`${secondaryBtn()} text-black px-3 py-2 rounded`}>
-                    Randomise
-                </button>
-                <button onClick={clearPoints} className={`${secondaryBtn()} text-black px-3 py-2 rounded`}>
-                    Clear
-                </button>
-                <button onClick={resetSolver} className={`${secondaryBtn()} text-white bg-blue-600 px-3 py-2 rounded`}>
-                    Start
-                </button>
-            </div>
-          </div>
-
-          <svg
-            viewBox={`0 0 ${view.w} ${view.h}`}
-            preserveAspectRatio="none"
-            className="block w-full h-[320px] rounded-xl border bg-white cursor-crosshair"
-            onClick={addPointFromClick}
-          >
-            {/* strip band */}
-            {showStrip && (
-              <rect
-                x={active.midX - Math.sqrt(active.stripD2)}
-                y={0}
-                width={2 * Math.sqrt(active.stripD2)}
-                height={view.h}
-                fill="rgb(99,102,241)"
-                opacity={0.2}
-              />
-            )}
-
-            {/* shade the two child segments when active node is being combined */}
-            {childrenDone && active?.midX != null && (
-              <>
-                <rect
-                  x={activeBounds.xL}
-                  y={0}
-                  width={Math.max(0, active.midX - activeBounds.xL)}
-                  height={view.h}
-                  fill="rgb(99,102,241)"
-                  opacity={0.15}
-                />
-                <rect
-                  x={active.midX}
-                  y={0}
-                  width={Math.max(0, activeBounds.xR - active.midX)}
-                  height={view.h}
-                  fill="rgb(99,102,241)"
-                  opacity={0.15}
-                />
-              </>
-            )}
-
-
-            {/* all median split lines */}
-            {splitLines.map((ln) => {
-              // bolden active line and fade others 
-              const opacity = ln.isActive ? 0.85 : ln.isAncestor ? 0.35 : 0.15;
-              const strokeWidth = ln.isActive ? 4 : ln.isAncestor ? 2.5 : 2;
-
-              // reduce opacity with depth 
-              const depthFade = Math.max(0.06, 1 - ln.depth * 0.08);
-
-              return (
-                <line
-                  key={ln.id}
-                  x1={ln.x}
-                  x2={ln.x}
-                  y1={0}
-                  y2={view.h}
-                  stroke="rgb(15, 23, 42)" // slate-900-ish (dark)
-                  strokeWidth={strokeWidth}
-                  opacity={opacity * depthFade}
-                />
-              );
-            })}
-
-
-            {/* global best (faint) */}
-            {globalBestSeg && (
-              <line
-                x1={globalBestSeg.A.x}
-                y1={globalBestSeg.A.y}
-                x2={globalBestSeg.B.x}
-                y2={globalBestSeg.B.y}
-                stroke="rgb(124,58,237)" // purple-600
-                strokeWidth={4}
-                opacity={0.15}
-              />
-            )}
-
-            {/* node best */}
-            {nodeBestSeg && (
-              <line
-                x1={nodeBestSeg.A.x}
-                y1={nodeBestSeg.A.y}
-                x2={nodeBestSeg.B.x}
-                y2={nodeBestSeg.B.y}
-                stroke="rgb(16,185,129)" // emerald-500
-                strokeWidth={4}
-                opacity={0.5}
-              />
-            )}
-
-            {/* last compared */}
-            {lastComparedSeg && (
-              <line
-                x1={lastComparedSeg.A.x}
-                y1={lastComparedSeg.A.y}
-                x2={lastComparedSeg.B.x}
-                y2={lastComparedSeg.B.y}
-                strokeWidth={2}
-                opacity={0.75}
-                strokeDasharray="6 4"
-              />
-            )}
-
-            {/* points */}
-            {points.map((p) => {
-            const inActive = activeSet.has(p.id);
-            const inStrip = active?.stripIds?.includes(p.id);
-
-            const isActiveBest = activeBestSet.has(p.id);
-            const isGlobalBest = globalBestSet.has(p.id);
-
-            const r = isActiveBest ? 7 : inActive ? 5 : 4;
-            const op = inActive ? 1 : 0.35;
-
-            return (
-              <g key={p.id}>
-                <circle
-                  cx={p.x}
-                  cy={p.y}
-                  r={r}
-                  opacity={op}
-                  fill={isActiveBest ? "rgb(16,185,129)" : "black"}   // active best = green
-                  stroke={isGlobalBest ? "rgb(124,58,237)" : "none"} // global best outline = purple
-                  strokeWidth={isGlobalBest ? 3 : 0}
-                />
-                {inStrip && (
-                  <circle
-                    cx={p.x}
-                    cy={p.y}
-                    r={r + 3}
-                    fill="rgb(99,102,241)"
-                    opacity={0.20}
-                  />
-                )}
-              </g>
-            );
-          })}
-          </svg>
-
-          <div className="mt-3 flex items-center gap-2 disabled:opacity-50">
-            <button
-                onClick={doDivide}
-                disabled={!canDivide(state)}
-                className={primaryBtn(canDivide(state), "bg-emerald-600")}
-            >
-                Divide
-            </button>
-
-            <button
-                onClick={doConquer}
-                disabled={!canConquer(state)}
-                className={primaryBtn(canConquer(state), "bg-teal-600")}
-            >
-                Conquer
-            </button>
-
-            <button
-                onClick={doCombine}
-                disabled={!canCombine(state)}
-                className={primaryBtn(canCombine(state), "bg-purple-600")}
-            >
-                Combine
-            </button>
-
-
-            <div className="ml-auto text-sm opacity-80">
-              Active node: <span className="font-semibold">{state.activeNodeId}</span>{" "}
-              | Global best:{" "}
-              <span className="font-semibold">
-                {state.globalBest ? fmtD2(state.globalBest.d2) : "—"}
-              </span>
-            </div>
+    return (
+    <div className="text-slate-900">
+      {/* Header row (page-native, no card wrapper) */}
+      <div className="flex items-start justify-between gap-3 mb-3 max-w-3xl">
+        <div>
+          <div className="text-2xl font-bold text-gray-900">Closest Pair of Points</div>
+          <div className="text-sm text-slate-600">
+            Click to add points, or Randomise for a random set of points.
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+          <button onClick={() => randomPoints(10)} className={secondaryBtn()}>
+            Randomise
+          </button>
+          <button onClick={clearPoints} className={secondaryBtn()}>
+            Clear
+          </button>
+          <button onClick={resetSolver} className={primaryBtn(true, "bg-blue-600")}>
+            Start
+          </button>
+        </div>
+      </div>
 
+      {/* Canvas (this is the only bordered “panel”, like your other algos) */}
+      
+      <svg
+        viewBox={`0 0 ${view.w} ${view.h}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="block w-full max-w-3xl aspect-[12/7] rounded-xl border bg-white cursor-crosshair"
+        onClick={addPointFromClick}
+      >
+        {/* Shade halves being combined (fills to segment bounds via activeBounds) */}
+        {childrenDone && active?.midX != null && (
+          <>
+            <rect
+              x={activeBounds.xL}
+              y={0}
+              width={Math.max(0, active.midX - activeBounds.xL)}
+              height={view.h}
+              fill="rgb(99,102,241)"   // indigo (left half)
+              opacity={0.1}
+            />
+            <rect
+              x={active.midX}
+              y={0}
+              width={Math.max(0, activeBounds.xR - active.midX)}
+              height={view.h}
+              fill="rgb(99,102,241)"   // indigo (right half)
+              opacity={0.1}
+            />
+          </>
+        )}
+
+        {/* strip band (search region within d of the boundary) */}
+        {showStrip && (
+          <rect
+            x={active.midX - stripHalfWidth}
+            y={0}
+            width={2 * stripHalfWidth}
+            height={view.h}
+            fill="rgb(99,102,241)" // indigo
+            opacity={0.15}
+          />
+        )}
+
+        {/* all median split lines */}
+        {splitLines.map((ln) => {
+          const opacity = ln.isActive ? 0.85 : ln.isAncestor ? 0.35 : 0.15;
+          const strokeWidth = ln.isActive ? 4 : ln.isAncestor ? 2.5 : 2;
+          const depthFade = Math.max(0.06, 1 - ln.depth * 0.08);
+
+          return (
+            <line
+              key={ln.id}
+              x1={ln.x}
+              x2={ln.x}
+              y1={0}
+              y2={view.h}
+              stroke="rgb(15, 23, 42)"
+              strokeWidth={strokeWidth}
+              opacity={opacity * depthFade}
+            />
+          );
+        })}
+
+        {/* global best (faint) */}
+        {globalBestSeg && (
+          <line
+            x1={globalBestSeg.A.x}
+            y1={globalBestSeg.A.y}
+            x2={globalBestSeg.B.x}
+            y2={globalBestSeg.B.y}
+            stroke="rgb(124,58,237)"
+            strokeWidth={4}
+            opacity={0.15}
+          />
+        )}
+
+        {/* node best */}
+        {nodeBestSeg && (
+          <line
+            x1={nodeBestSeg.A.x}
+            y1={nodeBestSeg.A.y}
+            x2={nodeBestSeg.B.x}
+            y2={nodeBestSeg.B.y}
+            stroke="rgb(16,185,129)"
+            strokeWidth={4}
+            opacity={0.5}
+          />
+        )}
+
+        {/* last compared */}
+        {lastComparedSeg && (
+          <line
+            x1={lastComparedSeg.A.x}
+            y1={lastComparedSeg.A.y}
+            x2={lastComparedSeg.B.x}
+            y2={lastComparedSeg.B.y}
+            stroke="rgb(15,23,42)"
+            strokeWidth={2}
+            opacity={0.75}
+            strokeDasharray="6 4"
+          />
+        )}
+
+        {/* points */}
+        {points.map((p) => {
+          const inActive = activeSet.has(p.id);
+          const inStrip = active?.stripIds?.includes(p.id);
+
+          const isActiveBest = activeBestSet.has(p.id);
+          const isGlobalBest = globalBestSet.has(p.id);
+
+          const r = isActiveBest ? 7 : inActive ? 5 : 4;
+          const op = inActive ? 1 : 0.35;
+
+          return (
+            <g key={p.id}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={r}
+                opacity={op}
+                fill={isActiveBest ? "rgb(16,185,129)" : "black"}
+                stroke={isGlobalBest ? "rgb(124,58,237)" : "none"}
+                strokeWidth={isGlobalBest ? 3 : 0}
+              />
+              {inStrip && (
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={r + 3}
+                  fill="rgb(99,102,241)"
+                  opacity={0.20}
+                />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Controls row underneath (uniform with your other algos) */}
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={doDivide}
+          disabled={!canDivide(state)}
+          className={primaryBtn(canDivide(state), "bg-emerald-600")}
+        >
+          Divide
+        </button>
+
+        <button
+          onClick={doConquer}
+          disabled={!canConquer(state)}
+          className={primaryBtn(canConquer(state), "bg-teal-600")}
+        >
+          Conquer
+        </button>
+
+        <button
+          onClick={doCombine}
+          disabled={!canCombine(state)}
+          className={primaryBtn(canCombine(state), "bg-purple-600")}
+        >
+          Combine
+        </button>
+
+        
       </div>
     </div>
   );

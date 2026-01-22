@@ -130,7 +130,7 @@ export default function Quickhull() {
 
               <p className="mt-2 text-sm text-gray-700">
                 Next, <span className="font-medium">Conquer</span> uses the furthest point from the active
-                edge to split into smaller subproblems.
+                edge, starting with the lower hull, to split into smaller subproblems.
               </p>
             </div>
           )}
