@@ -114,6 +114,7 @@ function emptyState(points, pointsById, usedSeed = null) {
     removed: {},
     lastAction: null,
     finished: true,
+    introPhase: "pre",
     meta: { nPoints: points.length, seed: usedSeed, minId: null, maxId: null },
   };
 }
@@ -153,6 +154,8 @@ export function makeInitialState({ nPoints = 25, seed = null } = {}) {
     removed: {},
     lastAction: null,
     finished: false,
+    didInitialSplit: false,
+    introPhase: "pre",
     activeChain: null,
     meta: { nPoints, seed: usedSeed, minId, maxId },
   };
@@ -188,6 +191,8 @@ export function makeStateFromPoints(points) {
     removed: {},
     lastAction: null,
     finished: false,
+    didInitialSplit: false,
+    introPhase: "pre",
     activeChain: null,
     meta: { nPoints: points.length, seed: null, minId, maxId },
   };
@@ -248,6 +253,8 @@ export function stepDivide(state) {
     problems,
     traceEdges,
     activeProblemId: targetId,
+    introPhase: state.introPhase === "pre" ? "baseline" : state.introPhase,
+    didInitialSplit: true,
     activeChain: problems.find((p) => p.id === targetId)?.chain ?? null,
     lastAction: { type: "DIVIDE", problemId: targetId },
   };
@@ -321,6 +328,7 @@ export function stepConquer(state) {
     removed,
     nextProblemId: state.nextProblemId + 2,
     activeProblemId: null,
+    introPhase: "running",
     lastAction: { type: "CONQUER", problemId: active.id },
   };
 }

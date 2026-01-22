@@ -84,8 +84,6 @@ export default function MaxSubarray() {
   const last = state.lastAction;
   const cross = last?.type === "COMBINE" ? last.details : null;
 
-  
-
   return (
     <div className="w-full flex flex-col gap-4 text-gray-900">
       <div className="flex flex-col gap-2">
@@ -216,6 +214,38 @@ export default function MaxSubarray() {
             onCombine={onCombine}
             onReset={() => resetTo(arr)}
           />
+
+          {state.lastAction?.type === "COMBINE" && state.lastAction.nodeId === state.rootId && state.lastAction.details?.chosen === "CROSS" &&(
+            <div className="p-4 rounded-2xl border shadow-sm">
+              <div className="font-semibold text-gray-900">Final Combine: why we cross the midpoint</div>
+
+              <div className="mt-2 text-sm text-gray-700 space-y-2">
+                <p>
+                  The best subarray for the full range must be one of three things:
+                </p>
+                <ol className="list-decimal ml-5 space-y-1">
+                  <li><span className="font-medium">Entirely in the left half</span> (use left.best)</li>
+                  <li><span className="font-medium">Entirely in the right half</span> (use right.best)</li>
+                  <li>
+                    <span className="font-medium">Crossing the midpoint</span>: take the best suffix of the left
+                    half + the best prefix of the right half.
+                  </li>
+                </ol>
+
+                <p>
+                  For the final combine, we need to consider the third case, which is why we compute the 
+                  best ending on the left and best starting on the right, and add them together:
+                  <span className="font-medium"> left.suff + right.pref</span>.
+                </p>
+
+                <p className="text-gray-900">
+                  In this step we chose: <span className="font-semibold">{state.lastAction.details.chosen}</span>
+                  {" "} (cross sum = <span className="font-semibold">{state.lastAction.details.crossVal}</span>)
+                </p>
+              </div>
+            </div>
+          )}
+
 
           
         </div>
