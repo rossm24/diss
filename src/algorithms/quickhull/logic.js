@@ -145,9 +145,13 @@ export function makeInitialState({ nPoints = 25, seed = null } = {}) {
   return {
     points,
     pointsById,
-    nextProblemId: 2,
-    problems,
+    nextProblemId: 0,
+    problems: [],
     activeProblemId: null,
+
+    baselineUpper: [],
+    baselineLower: [],
+
     hullEdges: [],
     traceEdges: [],
     traceTriangles: [],
@@ -188,6 +192,8 @@ export function makeStateFromPoints(points) {
     hullEdges: [],
     traceEdges: [],
     traceTriangles: [],
+    baselineUpper: [],
+    baselineLower: [],
     removed: {},
     lastAction: null,
     finished: false,
@@ -226,6 +232,42 @@ function addHullEdge(state, aId, bId) {
 export function stepDivide(state) {
   if (state.finished) return state;
 
+  // first divide baseline split only 
+  if ((state.introPhase ?? "pre") === "pre") {
+    if (state.points.length < 2) {
+      return { ...state, lastAction: { type: "DIVIDE_NONE", reason: "Need at least 2 points" } };
+    }
+
+    const { minId, maxId } = state.meta;
+    const allIds = state.points.map((p) => p.id);
+
+    const upper = idsLeftOfDirected(state.pointsById, minId, maxId, allIds);
+    const lower = idsLeftOfDirected(state.pointsById, maxId, minId, allIds);
+
+    const problems = [
+      { id: 0, aId: minId, bId: maxId, setIds: upper, pivotId: null, status: "todo", chain: "upper" },
+      { id: 1, aId: maxId, bId: minId, setIds: lower, pivotId: null, status: "todo", chain: "lower" },
+    ];
+
+    const traceEdges = [
+      ...(state.traceEdges ?? []),
+      { aId: minId, bId: maxId, type: "base" },
+    ];
+
+    return {
+      ...state,
+      problems,
+      nextProblemId: 2,
+      baselineUpper: upper,
+      baselineLower: lower,
+      traceEdges,
+      didInitialSplit: true,
+      introPhase: "baseline",
+      lastAction: { type: "DIVIDE_BASELINE", edge: [minId, maxId] },
+    };
+  }
+
+  // further divides
   if (findActivePivotedProblem(state)) {
     return { ...state, lastAction: { type: "DIVIDE_SKIPPED" } };
   }
@@ -238,27 +280,33 @@ export function stepDivide(state) {
   const problems = state.problems.map((pr) => {
     if (pr.id !== targetId) return pr;
 
-    const { bestId, bestD } = farthestPointFromLine(state.pointsById, pr.aId, pr.bId, pr.setIds);
+    const { bestId, bestD } = farthestPointFromLine(
+      state.pointsById,
+      pr.aId,
+      pr.bId,
+      pr.setIds
+    );
 
     return { ...pr, pivotId: bestId, pivotDist: bestD, status: "pivoted" };
   });
 
   const chosen = problems.find((p) => p.id === targetId);
   const traceEdges = [
-  ...(state.traceEdges ?? []),
-  { aId: chosen.aId, bId: chosen.bId, type: "active" },    ];
+    ...(state.traceEdges ?? []),
+    { aId: chosen.aId, bId: chosen.bId, type: "active" },
+  ];
 
   return {
     ...state,
     problems,
     traceEdges,
     activeProblemId: targetId,
-    introPhase: state.introPhase === "pre" ? "baseline" : state.introPhase,
-    didInitialSplit: true,
-    activeChain: problems.find((p) => p.id === targetId)?.chain ?? null,
+    activeChain: chosen?.chain ?? null,
+    introPhase: (state.introPhase ?? "pre") === "baseline" ? "pivot" : state.introPhase,
     lastAction: { type: "DIVIDE", problemId: targetId },
   };
 }
+
 
 export function stepConquer(state) {
   if (state.finished) return state;
@@ -362,6 +410,11 @@ export function stepCombine(state) {
 }
 
 export function canDivide(state) {
+  // allow first divide (baseline) if we have at least 2 points and haven't split yet
+  if ((state.introPhase ?? "pre") === "pre") {
+    return state.points.length >= 2;
+  }
+
   if (state.finished) return false;
   // can divide if there exists a todo problem with points AND we are not holding a pivoted active problem
   const active = state.activeProblemId == null

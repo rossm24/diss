@@ -1,4 +1,3 @@
-// src/algorithms/quickhull/Stepper.jsx
 import React from "react";
 
 const W = 720;

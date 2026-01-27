@@ -111,29 +111,37 @@ export default function Quickhull() {
         <div className="space-y-4">
           {state.introPhase === "baseline" && (
             <div className="bg-white border rounded-xl p-4">
-              <h2 className="text-sm font-semibold text-gray-900">
-                What this first Divide did
-              </h2>
-
+              <h2 className="text-sm font-semibold text-gray-900">First Divide: Baseline split</h2>
               <p className="mt-2 text-sm text-gray-700">
-                Quickhull starts by finding the <span className="font-medium">leftmost</span> and{" "}
-                <span className="font-medium">rightmost</span> points. These extremes must lie on the{" "}
+                Quickhull begins by selecting the <span className="font-medium">leftmost</span> and{" "}
+                <span className="font-medium">rightmost</span> points. These are guaranteed to be on the{" "}
                 <span className="font-medium">convex hull</span>.
               </p>
-
               <p className="mt-2 text-sm text-gray-700">
-                The line between them is the <span className="font-medium">baseline</span>. It splits all of the
-                points into two independent subproblems:{" "}
-                <span className="font-medium">upper hull</span> and{" "}
-                <span className="font-medium">lower hull</span>.
-              </p>
-
-              <p className="mt-2 text-sm text-gray-700">
-                Next, <span className="font-medium">Conquer</span> uses the furthest point from the active
-                edge, starting with the lower hull, to split into smaller subproblems.
+                The line between is called the baseline and it splits the points into two independent subproblems:
               </p>
             </div>
           )}
+
+          {state.introPhase === "pivot" && (
+            <div className="bg-white border rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-gray-900">Second Divide: The Furthest Point</h2>
+              <p className="mt-2 text-sm text-gray-700">
+                For the active edge, Quickhull finds the point <span className="font-medium">furthest point</span> from that line.
+                That point must also be part of the hull.
+              </p>
+            </div>
+          )}
+
+          {state.introPhase === "running" && (
+            <div className="bg-white border rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-gray-900">Conquer</h2>
+              <p className="mt-2 text-sm text-gray-700">When conquering, we remove any point that lies within the formed triangle.</p>
+              <p className="mt-2 text-sm text-gray-700">This is because these points cannot be part of the convex hull, so can be ignored.</p>
+            </div>
+          )}
+              
+
 
           <div className="text-sm text-gray-700 bg-white border rounded-xl p-3 space-y-1">
             <div>

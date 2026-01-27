@@ -461,7 +461,7 @@ export default function CPoPStepper() {
             y2={lastComparedSeg.B.y}
             stroke="rgb(15,23,42)"
             strokeWidth={2}
-            opacity={0.75}
+            opacity={0.0}
             strokeDasharray="6 4"
           />
         )}
