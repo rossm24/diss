@@ -1,13 +1,19 @@
+// component for visuals of the Quickhull algorithm 
+// takes current state from logic and draws using svg 
+
 import React from "react";
 
+// internal svg coordinate system used by the main canvas 
 const W = 720;
 const H = 460;
 
+// colours used to distinguish subproblems (upper vs lower)
 const CHAIN_COLOR = {
   upper: "#2563eb", // blue
   lower: "#f97316", // orange
 };
 
+// normal coords to pixel coords 
 function toPx(p, pad = 20) {
   return {
     x: pad + p.x * (W - 2 * pad),
@@ -20,25 +26,30 @@ export default function QuickhullStepper({
   editable = false,
   onAddPoint = null,
 }) {
+  // safetyvvvv check 
   if (!state) return null;
 
+  // step 1: identify active problem 
   const active =
     state.activeProblemId == null
       ? null
       : state.problems.find((p) => p.id === state.activeProblemId) || null;
 
+  // endpoints of active edge 
   const activeA = active ? state.pointsById[active.aId] : null;
   const activeB = active ? state.pointsById[active.bId] : null;
   const pivot = active && active.pivotId != null ? state.pointsById[active.pivotId] : null;
 
   const activeSet = new Set(active?.setIds ?? []);
 
+  // step 2: gather hull point ids for rendering
   const hullPointIds = new Set();
   for (const e of state.hullEdges) {
     hullPointIds.add(e.aId);
     hullPointIds.add(e.bId);
   }
 
+  // step 3: determine chain colour depending on which half we are in 
   const chain = active?.chain ?? state.activeChain ?? null;
   const chainFill = CHAIN_COLOR[chain] ?? "black";
 
@@ -52,6 +63,7 @@ export default function QuickhullStepper({
           onClick={(e) => {
             if (!editable || !onAddPoint) return;
 
+            // convert mouse click into coordinates 
             const rect = e.currentTarget.getBoundingClientRect();
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
@@ -69,7 +81,7 @@ export default function QuickhullStepper({
             onAddPoint({ x, y });
           }}
         >
-          {/* Trace triangles (history) */}
+          {/* Trace triangles (history) shows where the algorithm has already been, drawn faintly to not clutter view */}
           {(state.traceTriangles ?? []).map((t, i) => {
             const a = state.pointsById[t.aId];
             const b = state.pointsById[t.bId];
@@ -92,7 +104,7 @@ export default function QuickhullStepper({
             );
           })}
 
-          {/* Trace edges (history) */}
+          {/* Trace edges (history) baseline edge, active edge and split edge  */}
           {(state.traceEdges ?? []).map((ed, i) => {
             const a = state.pointsById[ed.aId];
             const b = state.pointsById[ed.bId];
@@ -101,6 +113,7 @@ export default function QuickhullStepper({
             const A = toPx(a);
             const B = toPx(b);
 
+            // active = dashed line, else solid but faint
             const dash = ed.type === "active" ? "4 6" : undefined;
             const op = ed.type === "active" ? 0.22 : 0.15;
 
@@ -140,7 +153,7 @@ export default function QuickhullStepper({
             );
           })}
 
-          {/* Active edge */}
+          {/* Active edge: when a current problem is active, draw its boundary edge */}
           {activeA && activeB && (() => {
             const A = toPx(activeA);
             const B = toPx(activeB);
@@ -158,7 +171,7 @@ export default function QuickhullStepper({
             );
           })()}
 
-          {/* Current triangle A-P-B */}
+          {/* Current triangle A-P-B : when pivot exists, draw the triangle */}
           {activeA && activeB && pivot && (() => {
             const A = toPx(activeA);
             const B = toPx(activeB);
@@ -174,7 +187,7 @@ export default function QuickhullStepper({
             );
           })()}
 
-          {/* Points */}
+          {/* Points: draw all points, with special styling for active endpoints, pivot, active set, and hull points */}
           {state.points.map((p) => {
             if (state.removed?.[p.id]) return null;
 
