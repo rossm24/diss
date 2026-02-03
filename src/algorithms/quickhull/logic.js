@@ -162,6 +162,9 @@ export function makeInitialState({ nPoints = 25, seed = null } = {}) {
     baselineUpper: [],
     baselineLower: [],
 
+    // for combine
+    combined: { lower: false, upper: false },
+
     // hull and trace edges start empty 
     hullEdges: [],
     traceEdges: [],
@@ -211,6 +214,7 @@ export function makeStateFromPoints(points) {
     traceTriangles: [],
     baselineUpper: [],
     baselineLower: [],
+    combined: { lower: false, upper: false },
     removed: {},
     lastAction: null,
     finished: false,
@@ -225,9 +229,10 @@ export function makeStateFromPoints(points) {
 // step logic (Divide / Conquer / Combine) 
 
 // pick the next subproblem to work on 
-function findNextDividableProblem(state) {
+function findNextDividableProblem(state, chain) {
   for (let i = state.problems.length - 1; i >= 0; i--) {
     const pr = state.problems[i];
+    if (pr.chain !== chain) continue;
     if (pr.status === "todo" && pr.setIds.length > 0) return pr.id;
   }
   return null;
@@ -309,7 +314,11 @@ export function stepDivide(state) {
     return { ...state, lastAction: { type: "DIVIDE_SKIPPED" } };
   }
 
-  const targetId = findNextDividableProblem(state);
+  const chain = currentChain(state);
+  const targetId = findNextDividableProblem(state, chain);
+
+  if (!chain) return { ...state, lastAction: { type: "DIVIDE_NONE", reason: "All hull combined" } };
+
   if (targetId == null) {
     return { ...state, lastAction: { type: "DIVIDE_NONE" } };
   }
@@ -362,6 +371,11 @@ export function stepConquer(state) {
 
   const active = findActivePivotedProblem(state);
   if (!active) return { ...state, lastAction: { type: "CONQUER_NONE" } };
+
+  const chain = currentChain(state);
+  if (active.chain !== chain) {
+    return { ...state, lastAction: { type: "CONQUER_BLOCKED", reason: `Now solve ${chain} hull` } };
+  }
 
   const { aId, bId, pivotId, setIds } = active;
   if (pivotId == null) return { ...state, lastAction: { type: "CONQUER_ERROR" } };
@@ -433,6 +447,55 @@ export function stepConquer(state) {
   };
 }
 
+// Decide which chain we are currently "solving".
+// Preference: solve LOWER first if it still has any unfinished work.
+function getWorkingChain(state) {
+  const hasLowerWork = state.problems.some(
+    (p) => p.chain === "lower" && (p.setIds.length > 0 || p.status === "pivoted")
+  );
+  if (hasLowerWork) return "lower";
+
+  const hasUpperWork = state.problems.some(
+    (p) => p.chain === "upper" && (p.setIds.length > 0 || p.status === "pivoted")
+  );
+  if (hasUpperWork) return "upper";
+
+  // No "work" left (only empty problems to combine, or nothing at all)
+  // In that case, we’ll allow combining whichever side still has empty problems.
+  const hasLowerEmpty = state.problems.some(
+    (p) => p.chain === "lower" && p.status === "todo" && p.setIds.length === 0
+  );
+  if (hasLowerEmpty) return "lower";
+
+  const hasUpperEmpty = state.problems.some(
+    (p) => p.chain === "upper" && p.status === "todo" && p.setIds.length === 0
+  );
+  if (hasUpperEmpty) return "upper";
+
+  return null;
+}
+
+// A chain is "finished" when there is no remaining problem on that chain
+// that still has outside points to process, and none is pivoted waiting.
+function isChainFinished(state, chain) {
+  return !state.problems.some(
+    (p) => p.chain === chain && (p.setIds.length > 0 || p.status === "pivoted")
+  );
+}
+
+// Find one combinable problem (empty outside set) for a specific chain.
+function findCombinableIndexForChain(state, chain) {
+  return state.problems.findIndex(
+    (p) => p.chain === chain && p.status === "todo" && p.setIds.length === 0
+  );
+}
+
+function currentChain(state) {
+  // Always do lower first, then upper.
+  if (!state.combined?.lower) return "lower";
+  if (!state.combined?.upper) return "upper";
+  return null;
+}
 
 /*
 Combine behaviour:
@@ -442,41 +505,63 @@ Combine behaviour:
 export function stepCombine(state) {
   if (state.finished) return state;
 
-  // find a problem with no outside points
-  const idx = state.problems.findIndex((p) => p.status === "todo" && p.setIds.length === 0);
+  const chain = currentChain(state);
+  if (!chain) {
+    return { ...state, lastAction: { type: "COMBINE_NONE", reason: "Nothing to combine" } };
+  }
 
-  // nothing to combine yet 
+  if (!isChainFinished(state, chain)) {
+    return { ...state, lastAction: { type: "COMBINE_BLOCKED", reason: `Finish ${chain} hull first` } };
+  }
+
+  const idx = findCombinableIndexForChain(state, chain);
   if (idx === -1) {
-    // if no remaining then we are done 
-    const done = findNextDividableProblem(state) == null && state.activeProblemId == null;
-    return { ...state, finished: done, lastAction: { type: "COMBINE_NONE", finished: done } };
+    return { ...state, lastAction: { type: "COMBINE_NONE", reason: `No ${chain} edges left to reveal` } };
   }
 
   const pr = state.problems[idx];
-
-  // add hull edge and remove problem
   let next = addHullEdge(state, pr.aId, pr.bId);
 
+  // remove that leaf problem
   const problems = next.problems.filter((p) => p.id !== pr.id);
 
   next = {
     ...next,
     problems,
-    lastAction: { type: "COMBINE", problemId: pr.id, edge: [pr.aId, pr.bId] },
+    lastAction: { type: "COMBINE", chain, edge: [pr.aId, pr.bId] },
   };
 
-  if (next.problems.length === 0 && next.activeProblemId == null) {
-    next = { ...next, finished: true };
+  // If that chain has no more combinable edges, mark it as "combined"
+  const anyLeftOnChain = next.problems.some((p) => p.chain === chain);
+  if (!anyLeftOnChain) {
+    next = {
+      ...next,
+      combined: { ...(next.combined ?? {}), [chain]: true },
+      lastAction: { type: "COMBINE_DONE", chain },
+    };
   }
+
+  // If both chains are combined and nothing left, finish
+  const done =
+    (next.combined?.lower && next.combined?.upper) &&
+    next.problems.length === 0 &&
+    next.activeProblemId == null;
+
+  if (done) next = { ...next, finished: true };
 
   return next;
 }
+
+
 
 export function canDivide(state) {
   // allow first divide (baseline) if we have at least 2 points and haven't split yet
   if ((state.introPhase ?? "pre") === "pre") {
     return state.points.length >= 2;
   }
+
+  // gate for button presses 
+  if (canCombine(state)) return false;
 
   if (state.finished) return false;
   // can divide if there exists a todo problem with points AND we are not holding a pivoted active problem
@@ -502,6 +587,13 @@ export function canConquer(state) {
 // true when there exists a problem with no outside points
 export function canCombine(state) {
   if (state.finished) return false;
-  return state.problems.some((p) => p.status === "todo" && p.setIds.length === 0);
-}
 
+  const chain = currentChain(state);
+  if (!chain) return false;
+
+  // must finish all divide/conquer work for this side first
+  if (!isChainFinished(state, chain)) return false;
+
+  // then allow combining edges on that side (one click per edge)
+  return findCombinableIndexForChain(state, chain) !== -1;
+}
