@@ -5,15 +5,25 @@ import { QuickSortStepper } from '../algorithms/quicksort/Stepper.js'
 function classifyLastAction(lastAction) {
   if (!lastAction || typeof lastAction !== 'string') return null;
   if (lastAction.startsWith('divide: start partition')) return 'QS_PARTITION_START';
+  if (lastAction.startsWith('divide: compare index')) return 'QS_SCANNING_STEP';
   if (lastAction.startsWith('divide: place pivot')) return 'QS_PARTITION_DONE';
   return null;
+}
+
+function pickRandomN(arr, n) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
 }
 
 const QS_QUESTIONS = [
   {
     id: 'q1_partition_guarantee',
     triggerAction: 'QS_PARTITION_START',
-    prompt: 'We are now in the parition step. After partitioning around the pivot, what can we guarantee about the elements?',
+    prompt: 'We are now in the partition step. After partitioning around the pivot, what can we guarantee about the elements?',
     options: [
       'Elements to the left of the pivot are less than the pivot, and right are greater',
       'Elements to the left of the pivot are fully sorted',
@@ -46,6 +56,32 @@ const QS_QUESTIONS = [
     hint: 'Think about whether partitions are balanced or extremely lopsided.',
     why: 'Extreme pivots create unbalanced partitions, increasing recursion depth and total comparisons.',
   },
+  {
+    id: 'q4_pivot_final_spot',
+    triggerAction: 'QS_PARTITION_DONE',
+    prompt: 'Once the partition is finished and the pivot is in its new spot, what happens to that pivot element?',
+    options: [
+      'It stays in that spot because it is now in its final sorted position',
+      'It moves back to the end of the array to be used again',
+      'It is swapped with the largest element in the array',
+    ],
+    correctIndex: 0,
+    hint: 'Does the pivot need to move again if everything to its left is smaller and everything to its right is larger?',
+    why: 'A key feature of Quick Sort is that each partition step places at least one element (the pivot) into its permanent, sorted position.'
+  },
+  {
+    id: 'q5_scanning_logic',
+    triggerAction: 'QS_SCANNING_STEP',
+    prompt: 'As the scanner function moves through the array, what is it looking for in relation to the pivot?',
+    options: [
+      'Numbers that are equal to the first element',
+      'Numbers that are smaller than the pivot, so it can move them to the left side',
+      'The largest number in the entire array',
+    ],
+    correctIndex: 1,
+    hint: 'The goal of this step is to separate the "small" numbers from the "big" numbers.',
+    why: 'The algorithm scans the array to find elements that belong on the left side (smaller) or right side (larger) of the pivot point.'
+  }
 ];
 
 export default function QuickSort() {
@@ -59,6 +95,7 @@ export default function QuickSort() {
   const [activeQ, setActiveQ] = useState(null); // { ...q, status, chosenIndex }
   const [showHint, setShowHint] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
+  const [wrongCount, setWrongCount] = useState(0);
 
   const bump = () =>
     setStepper(Object.assign(Object.create(Object.getPrototypeOf(stepper)), stepper));
@@ -71,7 +108,8 @@ export default function QuickSort() {
   const topFrame = state.stack[state.stack.length - 1] || null;
   const phase = topFrame ? topFrame.phase : null;
 
-  const totalQuestions = QS_QUESTIONS.length;
+  const [runQuestions, setRunQuestions] = useState([]); // the 3 chosen for THIS run
+  const totalQuestions = teachingEnabled ? runQuestions.length : QS_QUESTIONS.length;
   const teachingBlocked = teachingEnabled && !!activeQ;
 
   // decide which pivot index to highlight for the UI
@@ -89,6 +127,16 @@ export default function QuickSort() {
   const max = Math.max(1, ...values.map(v => Math.abs(v)));
   const heightPx = v => 12 + Math.round((Math.abs(v) / max) * 160);
 
+  const startNewQuizRun = () => {
+    const chosen = pickRandomN(QS_QUESTIONS, 3);
+    setRunQuestions(chosen);
+    setAskedIds(new Set());
+    setActiveQ(null);
+    setShowHint(false);
+    setCorrectCount(0);
+    setWrongCount(0); 
+  };
+
   const parse = () =>
     inputStr
       .split(',')
@@ -103,12 +151,47 @@ export default function QuickSort() {
     setStepper(s);
     setWritePulse(new Set());
 
-    // teaching reset
-    setAskedIds(new Set());
-    setActiveQ(null);
-    setShowHint(false);
-    setCorrectCount(0);
+    if (teachingEnabled) {
+      startNewQuizRun();
+    } else {
+      // teaching reset (existing)
+      setAskedIds(new Set());
+      setActiveQ(null);
+      setShowHint(false);
+      setCorrectCount(0);
+      setWrongCount(0);
+    }
   };
+
+  // randomise helpers
+  const randomArray = (n = 10, max = 100) => {
+    const pool = Array.from({ length: max }, (_, i) => i + 1);
+
+    // Shuffle pool
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    // Take first n elements
+    return pool.slice(0, n);
+  };
+
+
+
+  const randomise = () => {
+    const arr = randomArray(8, 50);
+    const s = new QuickSortStepper(arr);
+    setStepper(s);
+    setWritePulse(new Set());
+    setInputStr(arr.join(','));
+
+    if (teachingEnabled) {
+      startNewQuizRun();
+    }
+  };
+
+
 
   const flashWritesFromStepper = () => {
     const fresh = new Set(stepper.getState().lastWrites);
@@ -123,10 +206,13 @@ export default function QuickSort() {
     if (!teachingEnabled) return;
     if (activeQ) return;
 
-    // Q3: end-of-algorithm reflection
+    // If runQuestions isn't initialised yet (e.g. they enabled quiz mid-run), initialise it
+    const pool = (runQuestions && runQuestions.length > 0) ? runQuestions : QS_QUESTIONS;
+
+    // Done-trigger questions
     if (prevState?.done === false && nextState?.done === true) {
-      const q = QS_QUESTIONS.find(x => x.triggerDone);
-      if (q && !askedIds.has(q.id)) {
+      const q = pool.find(x => x.triggerDone && !askedIds.has(x.id));
+      if (q) {
         setAskedIds(prev => new Set(prev).add(q.id));
         setActiveQ({ ...q, status: 'unanswered', chosenIndex: null });
         setShowHint(false);
@@ -134,27 +220,32 @@ export default function QuickSort() {
       return;
     }
 
-    // Q1/Q2: based on lastAction string
     const actionType = classifyLastAction(nextState?.lastAction);
     if (!actionType) return;
 
-    const q = QS_QUESTIONS.find(x => x.triggerAction === actionType);
-    if (!q) return;
-    if (askedIds.has(q.id)) return;
+    // Pick ANY matching question that hasn't been asked yet (important for QS_PARTITION_DONE)
+    const candidates = pool.filter(
+      x => x.triggerAction === actionType && !askedIds.has(x.id)
+    );
+
+    if (candidates.length === 0) return;
+
+    // If there are multiple (e.g. q2 & q4), pick one at random for extra variety
+    const q = candidates[Math.floor(Math.random() * candidates.length)];
 
     setAskedIds(prev => new Set(prev).add(q.id));
     setActiveQ({ ...q, status: 'unanswered', chosenIndex: null });
     setShowHint(false);
   };
 
+  
+
   const answerQuestion = (idx) => {
     if (!activeQ || activeQ.status !== 'unanswered') return;
 
     const correct = idx === activeQ.correctIndex;
-
-    if (correct) {
-      setCorrectCount((c) => c + 1);
-    }
+    if (correct) setCorrectCount(c => c + 1);
+    else setWrongCount(w => w + 1);
 
     setActiveQ({
       ...activeQ,
@@ -210,46 +301,99 @@ export default function QuickSort() {
     }
   };
 
+  const answeredCount = askedIds.size;;
+
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-5">
+    <div className="min-h-screen bg-grey-500">
+      <div className="max-w-5xl mx-auto space-y-5">
         <h1 className="text-2xl font-bold text-gray-900">Quick Sort</h1>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <input
             className="flex-1 border rounded px-3 py-2"
             value={inputStr}
             onChange={e => setInputStr(e.target.value)}
             placeholder="e.g. 38,27,43,3,9,42,10,21"
           />
-          <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={reset}>
+
+          <button
+            className="px-3 py-2 rounded bg-blue-600 text-white"
+            onClick={reset}
+          >
             Start
           </button>
-        </div>
 
-        {/* Teaching mode toggle */}
-        <div className="flex items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-800">
-            <input
-              type="checkbox"
-              checked={teachingEnabled}
-              onChange={(e) => {
-                const on = e.target.checked;
-                setTeachingEnabled(on);
-                // if turning off, stop blocking the UI
-                if (!on) setActiveQ(null);
-                setShowHint(false);
-              }}
-            />
-            Teaching mode
-          </label>
+          <button
+            className="px-3 py-2 rounded bg-white text-gray-800 border"
+            onClick={randomise}
+            title="Generate a random array"
+          >
+            Randomise
+          </button>
 
-          {teachingEnabled && (
-            <div className="text-xs text-gray-600">
-              Score: {correctCount}/{totalQuestions}
+          {/* Quiz mode toggle (switch) */}
+            <div className="flex items-center gap-3 px-3 py-2">
+              {/* Left side: score area (fixed width so layout doesn’t jump) */}
+              <div className="w-40 flex justify-end">
+                {teachingEnabled && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalQuestions }).map((_, i) => {
+                        let color = "bg-gray-300";
+
+                        if (i < answeredCount) {
+                          // this dot represents an answered question
+                          color = i < correctCount ? "bg-emerald-600" : "bg-red-500";
+                        }
+
+                        return (
+                          <span
+                            key={i}
+                            className={`h-2.5 w-2.5 rounded-full ${color}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {correctCount}/{totalQuestions}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right side: label + toggle (stays put) */}
+              <span className="text-sm text-gray-800">Quiz Mode</span>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={teachingEnabled}
+                onClick={() => {
+                  const on = !teachingEnabled;
+                  setTeachingEnabled(on);
+                  if (!on) {
+                    setActiveQ(null);
+                    setShowHint(false);
+                  } else {
+                    startNewQuizRun();
+                  }
+                }}
+                className={[
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                  teachingEnabled ? "bg-indigo-600" : "bg-gray-300",
+                  "focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2",
+                ].join(" ")}
+                title={teachingEnabled ? "Quiz Mode is ON" : "Quiz Mode is OFF"}
+              >
+                <span
+                  className={[
+                    "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                    teachingEnabled ? "translate-x-5" : "translate-x-1",
+                  ].join(" ")}
+                />
+              </button>
             </div>
-          )}
-        </div>
+          </div>
 
         {/* Teaching question card */}
         {teachingEnabled && activeQ && (

@@ -3,7 +3,7 @@ import CPoPStepper from "../algorithms/cpop/Stepper.jsx";
 
 export default function CPoP() {
   return (
-    <div className="p-4">
+    <div className="">
       <CPoPStepper />
     </div>
   );

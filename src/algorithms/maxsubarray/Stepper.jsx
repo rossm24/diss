@@ -9,7 +9,7 @@ export default function MaxSubarrayStepper({ state, onDivide, onConquer, onCombi
   const baseBtn = "px-4 py-2 rounded text-white disabled:opacity-50";
 
   return (
-    <div className="flex flex-col gap-3 p-4 rounded-2xl shadow-sm border text-gray-900">
+    <div className="flex flex-col gap-3 text-gray-900">
       <div className="flex flex-wrap gap-2 items-center">
         <button
           className={`${baseBtn} bg-emerald-600`}
