@@ -11,6 +11,99 @@ import {
   dist2,
 } from "./logic.js";
 
+/* quiz helpers */
+
+function pickRandomN(arr, n) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
+}
+
+
+const CPOP_QUESTIONS = [
+  {
+    id: "cpop_q1_split_by_median_x",
+    trigger: "DIVIDE_FIRST",
+    prompt: "Why does the algorithm split the points by the median x-coordinate instead of splitting the plane into equal-width columns?",
+    options: [
+      "To ensure each recursive subproblem has roughly the same number of points",
+      "To minimise the physical width of each region",
+      "To guarantee the closest pair lies entirely in one half",
+    ],
+    correctIndex: 0,
+    hint: "Divide-and-conquer efficiency depends on balanced subproblem sizes by count.",
+    why: "Splitting by x-order keeps the recursion balanced (roughly half the points each side).",
+  },
+  {
+    id: "cpop_q2_stop_at_2_3",
+    trigger: "DIVIDE_FIRST",
+    prompt: "Why do we stop dividing at 2–3 points in this algorithm instead of going down to 1 point like in many other algorithms?",
+    options: [
+      "Because a single point has no distance to compare, so the algorithm would fail",
+      "Because with 2–3 points we can compute the closest pair in constant time, so further recursion is unnecessary",
+      "Because splitting further would break the balance of the recursion tree",
+    ],
+    correctIndex: 1,
+    hint: "Think about constant work at the base case.",
+    why: "For 2–3 points, brute force is O(1), so recursion beyond that doesn’t help.",
+  },
+  {
+    id: "cpop_q3_strip_useful",
+    trigger: "COMBINE_READY",
+    prompt: "When combining 2 segments, why is the column around the section line useful?",
+    options: [
+      "Because only points within that distance can produce a closer pair than we already have",
+      "Because cross-border pairs will never be closer than an in-segment pair",
+      "Because every point in the left segment must be compared with every point in the right segment",
+    ],
+    correctIndex: 0,
+    hint: "The strip width is tied to the best distance found in the two halves.",
+    why: "If a point is farther than d from the boundary, it can’t beat the best in-half distance d.",
+  },
+  {
+    id: "cpop_q4_strip_width",
+    trigger: "STRIP_SHOWN",
+    prompt: "The width of the shaded strip during the combine step is determined by:",
+    options: [
+      "The total width of the two segments",
+      "The smallest distance found in the two halves",
+      "The number of points near the boundary",
+    ],
+    correctIndex: 1,
+    hint: "The strip is ±d from the midline, where d is the current best distance from the halves.",
+    why: "We only need to search within distance d of the boundary because anything beyond can’t beat d.",
+  },
+  {
+    id: "cpop_q5_not_all_strip_pairs",
+    trigger: "STRIP_SHOWN",
+    prompt: "After building the strip, why do we not compare every pair of points inside it?",
+    options: [
+      "Because geometry guarantees each point only needs to be compared to a small constant number of nearby points",
+      "Because recursion has already eliminated all cross-border pairs",
+      "Because sorting by x means the nearest pair must be adjacent",
+    ],
+    correctIndex: 0,
+    hint: "Sorting strip points by y limits how many neighbours each point needs to check.",
+    why: "In the strip, each point only needs to check a constant number of subsequent points in y-order.",
+  },
+  {
+    id: "cpop_q6_purpose_of_combine",
+    trigger: "COMBINE_FIRST",
+    prompt: "What is the main purpose of the combine step in the Closest Pair algorithm?",
+    options: [
+      "To merge two sorted lists of points",
+      "To check whether a closer pair exists across the dividing line",
+      "To reorder the points for the next recursion",
+    ],
+    correctIndex: 1,
+    hint: "Combine is about cross-border candidates.",
+    why: "Combine checks for a potentially closer pair that crosses the boundary between the two halves.",
+  },
+];
+
 function primaryBtn(enabled, colorClass) {
   return [
     "px-4 py-2 rounded text-white disabled:opacity-50 disabled:cursor-not-allowed",
@@ -136,6 +229,38 @@ function computeNodeBounds(nodes, nodeId, viewW) {
 
 export default function CPoPStepper() {
   const [state, setState] = useState(() => makeInitialState([]));
+
+  // quiz mode state 
+  const [teachingEnabled, setTeachingEnabled] = useState(false);
+  const [runQuestions, setRunQuestions] = useState([]); // exactly 3 chosen per run
+
+  // shown vs answered
+  const [shownIds, setShownIds] = useState(() => new Set());
+  const [answeredIds, setAnsweredIds] = useState(() => new Set());
+
+  const [activeQ, setActiveQ] = useState(null);
+  const [showHint, setShowHint] = useState(false);
+  const [correctCount, setCorrectCount] = useState(0);
+
+  // refs
+  const shownIdsRef = React.useRef(new Set());
+  const answeredIdsRef = React.useRef(new Set());
+  const runQuestionsRef = React.useRef([]);
+  const activeQRef = React.useRef(null);
+  const teachingEnabledRef = React.useRef(false);
+
+  React.useEffect(() => { shownIdsRef.current = shownIds; }, [shownIds]);
+  React.useEffect(() => { answeredIdsRef.current = answeredIds; }, [answeredIds]);
+  React.useEffect(() => { runQuestionsRef.current = runQuestions; }, [runQuestions]);
+  React.useEffect(() => { activeQRef.current = activeQ; }, [activeQ]);
+  React.useEffect(() => { teachingEnabledRef.current = teachingEnabled; }, [teachingEnabled]);
+
+  const pool = teachingEnabled && runQuestions.length > 0 ? runQuestions : CPOP_QUESTIONS;
+  const totalQuestions = teachingEnabled ? pool.length : CPOP_QUESTIONS.length;
+
+  const answeredCount = answeredIds.size;
+
+  const teachingBlocked = teachingEnabled && !!activeQ;
 
   const active = state.nodes[state.activeNodeId];
 
@@ -273,6 +398,8 @@ export default function CPoPStepper() {
       const points = Object.values(s.pointsById).filter(Boolean);
       const nextId = points.length ? Math.max(...points.map((p) => p.id)) + 1 : 0;
 
+      if (teachingEnabledRef.current) startNewQuizRun();
+
       const ns = structuredClone(s);
       ns.pointsById[nextId] = {
         id: nextId,
@@ -289,6 +416,8 @@ export default function CPoPStepper() {
   function randomPoints(n = 20) {
     setState((s) => {
       const ns = structuredClone(s);
+
+      if (teachingEnabledRef.current) startNewQuizRun();
 
       const existing = Object.values(ns.pointsById).filter(Boolean);
       let nextId = existing.length ? Math.max(...existing.map((p) => p.id)) + 1 : 0;
@@ -308,6 +437,7 @@ export default function CPoPStepper() {
 
   function clearPoints() {
     setState(makeInitialState([]));
+    if (teachingEnabledRef.current) startNewQuizRun();
   }
 
   function resetSolver() {
@@ -315,14 +445,164 @@ export default function CPoPStepper() {
   }
 
   function doDivide() {
-    setState((s) => stepDivide(s));
+    if (teachingBlocked) return;
+
+    const prev = state;
+    const next = stepDivide(prev);
+
+    if (next !== prev) {
+      setState(next);
+
+      // trigger DIVIDE_FIRST the first time root gets a midline
+      const prevHadSplit = prev.nodes?.[0]?.midX != null;
+      const nextHadSplit = next.nodes?.[0]?.midX != null;
+      if (!prevHadSplit && nextHadSplit) {
+        maybeActivateQuestion(prev, next, "DIVIDE_FIRST");
+      }
+    }
   }
+  
   function doConquer() {
-    setState((s) => stepConquer(s));
+    if (teachingBlocked) return;
+
+    const prev = state;
+    const next = stepConquer(prev);
+
+    if (next !== prev) {
+      setState(next);
+
+      // When a leaf first gains a best pair -> Conquer leaf
+      const prevActive = prev.nodes[prev.activeNodeId];
+      const nextActive = next.nodes[next.activeNodeId];
+
+      const prevLeafSolved = !!prevActive?.best && (prevActive?.ids?.length ?? 99) <= 3;
+      const nextLeafSolved = !!nextActive?.best && (nextActive?.ids?.length ?? 99) <= 3;
+
+      if (!prevLeafSolved && nextLeafSolved) {
+        maybeActivateQuestion(prev, next, "CONQUER_LEAF");
+      }
+    }
   }
+  
   function doCombine() {
-    setState((s) => stepCombine(s));
+    if (teachingBlocked) return;
+
+    const prev = state;
+
+    // combine-ready transition BEFORE we step
+    const prevCombineReady = canCombine(prev);
+
+    const next = stepCombine(prev);
+
+    if (next !== prev) {
+      setState(next);
+
+      const nextCombineReady = canCombine(next);
+
+      // first time combine becomes available
+      if (!prevCombineReady && nextCombineReady) {
+        maybeActivateQuestion(prev, next, "COMBINE_READY");
+        return;
+      }
+
+      // first time we actually combine at the root (or first combine in run)
+      if (!prev.nodes?.[0]?.best && next.nodes?.[0]?.best) {
+        maybeActivateQuestion(prev, next, "COMBINE_FIRST");
+      }
+
+      // show strip question once we have strip info on active node
+      const prevActive = prev.nodes[prev.activeNodeId];
+      const nextActive = next.nodes[next.activeNodeId];
+      const prevStrip = Number.isFinite(prevActive?.stripD2) && prevActive.stripD2 < Infinity;
+      const nextStrip = Number.isFinite(nextActive?.stripD2) && nextActive.stripD2 < Infinity;
+      if (!prevStrip && nextStrip) {
+        maybeActivateQuestion(prev, next, "STRIP_SHOWN");
+      }
+    }
   }
+
+  const answerQuestion = (idx) => {
+    if (!activeQ || activeQ.status !== "unanswered") return;
+
+    const correct = idx === activeQ.correctIndex;
+    if (correct) setCorrectCount((c) => c + 1);
+
+    // mark as answered 
+    const nextAnswered = new Set(answeredIdsRef.current);
+    nextAnswered.add(activeQ.id);
+    answeredIdsRef.current = nextAnswered;
+    setAnsweredIds(nextAnswered);
+
+    setActiveQ({
+      ...activeQ,
+      chosenIndex: idx,
+      status: correct ? "correct" : "incorrect",
+    });
+
+    setShowHint(false);
+  };
+
+  const skipQuestion = () => {
+    if (activeQ) {
+      const nextAnswered = new Set(answeredIdsRef.current);
+      nextAnswered.add(activeQ.id);
+      answeredIdsRef.current = nextAnswered;
+      setAnsweredIds(nextAnswered);
+    }
+    setActiveQ(null);
+    setShowHint(false);
+  };
+
+  const continueAfterAnswer = () => {
+    setActiveQ(null);
+    setShowHint(false);
+  };
+
+  const startNewQuizRun = () => {
+    const chosen = pickRandomN(CPOP_QUESTIONS, 3);
+
+    setRunQuestions(chosen);
+    setShownIds(new Set());
+    setAnsweredIds(new Set());
+    setActiveQ(null);
+    setShowHint(false);
+    setCorrectCount(0);
+
+    runQuestionsRef.current = chosen;
+    shownIdsRef.current = new Set();
+    answeredIdsRef.current = new Set();
+    activeQRef.current = null;
+  };
+
+  const maybeActivateQuestion = (prevState, nextState, eventTag) => {
+    if (!teachingEnabledRef.current) return;
+    if (activeQRef.current) return;
+
+    const poolNow =
+      (runQuestionsRef.current && runQuestionsRef.current.length > 0)
+        ? runQuestionsRef.current
+        : CPOP_QUESTIONS;
+
+    // cap by ANSWERED, not SHOWN
+    if (answeredIdsRef.current.size >= poolNow.length) return;
+
+    const candidates = poolNow.filter(
+      (q) => q.trigger === eventTag && !shownIdsRef.current.has(q.id)
+    );
+    if (candidates.length === 0) return;
+
+    // ask exactly ONE per event
+    const q = candidates[Math.floor(Math.random() * candidates.length)];
+
+    const nextShown = new Set(shownIdsRef.current);
+    nextShown.add(q.id);
+
+    shownIdsRef.current = nextShown;
+    setShownIds(nextShown);
+
+    setActiveQ({ ...q, status: "unanswered", chosenIndex: null });
+    setShowHint(false);
+  };
 
   const midX = active?.midX;
   const showMidLine = active?.left != null && active?.midX != null;
@@ -502,34 +782,174 @@ export default function CPoPStepper() {
         })}
       </svg>
 
+      {teachingEnabled && activeQ && (
+        <div className="bg-white border rounded p-4 max-w-3xl">
+          <div className="text-sm font-semibold text-gray-900">{activeQ.prompt}</div>
+
+          <div className="mt-3 space-y-2">
+            {activeQ.options.map((opt, idx) => {
+              const isChosen = activeQ.chosenIndex === idx;
+              const showResult = activeQ.status !== "unanswered";
+              const isCorrectOption = showResult && idx === activeQ.correctIndex;
+              const isWrongChosen = showResult && activeQ.status === "incorrect" && isChosen;
+
+              return (
+                <button
+                  key={`${activeQ.id}_${idx}`}
+                  disabled={activeQ.status !== "unanswered"}
+                  onClick={() => answerQuestion(idx)}
+                  className={[
+                    "w-full text-left text-sm text-gray-900 border rounded-lg px-3 py-2 transition",
+                    activeQ.status === "unanswered" ? "hover:bg-gray-50" : "",
+                    isCorrectOption ? "border-green-500 bg-green-50" : "",
+                    isWrongChosen ? "border-red-500 bg-red-50" : "",
+                    activeQ.status === "unanswered" && isChosen ? "border-blue-400 bg-blue-50" : "",
+                    !isCorrectOption && !isWrongChosen && !(activeQ.status === "unanswered" && isChosen)
+                      ? "border-gray-200"
+                      : "",
+                    showResult && !isCorrectOption && !isWrongChosen ? "opacity-80" : "",
+                  ].join(" ")}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            {activeQ.status === "unanswered" ? (
+              <>
+                <button
+                  className="text-xs px-3 py-1 border rounded-lg hover:bg-gray-50 text-gray-900"
+                  onClick={() => setShowHint((v) => !v)}
+                >
+                  Hint?
+                </button>
+
+                <button
+                  className="text-xs px-3 py-1 border rounded-lg hover:bg-gray-50 text-gray-900"
+                  onClick={skipQuestion}
+                >
+                  Skip
+                </button>
+
+                <div className="ml-auto text-xs text-gray-500">Answer to continue</div>
+              </>
+            ) : (
+              <>
+                <div className="text-xs text-gray-700">
+                  {activeQ.status === "correct" ? "Correct!" : "Not quite."} {activeQ.why}
+                </div>
+                <button
+                  className="ml-auto text-xs px-3 py-1 border rounded-lg hover:bg-gray-50 text-gray-900"
+                  onClick={continueAfterAnswer}
+                >
+                  Continue
+                </button>
+              </>
+            )}
+          </div>
+
+          {activeQ.status === "unanswered" && showHint && (
+            <div className="mt-2 text-xs text-gray-600 border-t pt-2">{activeQ.hint}</div>
+          )}
+        </div>
+      )}
+
       {/* Controls row underneath (uniform with your other algos) */}
-      <div className="mt-3 flex items-center gap-2">
-        <button
-          onClick={doDivide}
-          disabled={!canDivide(state)}
-          className={primaryBtn(canDivide(state), "bg-emerald-600")}
-        >
-          Divide
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-2 max-w-5xl mx-auto">
+          <button
+            onClick={doDivide}
+            disabled={teachingBlocked || !canDivide(state)}
+            className={primaryBtn(canDivide(state), "bg-emerald-600")}
+          >
+            Divide
+          </button>
 
-        <button
-          onClick={doConquer}
-          disabled={!canConquer(state)}
-          className={primaryBtn(canConquer(state), "bg-teal-600")}
-        >
-          Conquer
-        </button>
+          <button
+            onClick={doConquer}
+            disabled={teachingBlocked || !canConquer(state)}
+            className={primaryBtn(canConquer(state), "bg-teal-600")}
+          >
+            Conquer
+          </button>
 
-        <button
-          onClick={doCombine}
-          disabled={!canCombine(state)}
-          className={primaryBtn(canCombine(state), "bg-purple-600")}
-        >
-          Combine
-        </button>
+          <button
+            onClick={doCombine}
+            disabled={teachingBlocked || !canCombine(state)}
+            className={primaryBtn(canCombine(state), "bg-purple-600")}
+          >
+            Combine
+          </button>
 
-        
-      </div>
+          {/* right side: quiz toggle */}
+          <div className="flex items-center gap-2 px-3 py-2">
+            <div className="min-w-[335px] flex justify-end">
+              {teachingEnabled && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalQuestions }).map((_, i) => {
+                      let color = "bg-gray-300";
+                      if (i < answeredCount) {
+                        color = i < correctCount ? "bg-emerald-600" : "bg-red-500";
+                      }
+                      return <span key={i} className={`h-2.5 w-2.5 rounded-full ${color}`} />;
+                    })}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {correctCount}/{totalQuestions}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <span className="text-sm text-gray-800">Quiz Mode</span>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={teachingEnabled}
+              onClick={() => {
+                const on = !teachingEnabled;
+                setTeachingEnabled(on);
+                if (!on) {
+                  setActiveQ(null);
+                  setShowHint(false);
+                  setRunQuestions([]);
+
+                  setShownIds(new Set());
+                  setAnsweredIds(new Set());
+                  shownIdsRef.current = new Set();
+                  answeredIdsRef.current = new Set();
+
+                  runQuestionsRef.current = [];
+                  activeQRef.current = null;
+                } else {
+                  startNewQuizRun();
+                }
+              }}
+              className={[
+                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                teachingEnabled ? "bg-indigo-600" : "bg-gray-300",
+                "focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2",
+              ].join(" ")}
+              title={teachingEnabled ? "Quiz Mode is ON" : "Quiz Mode is OFF"}
+            >
+              <span
+                className={[
+                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                  teachingEnabled ? "translate-x-5" : "translate-x-1",
+                ].join(" ")}
+              />
+            </button>
+          </div>
+
+          {teachingBlocked && (
+            <div className="w-full text-xs text-gray-500">
+              Quiz mode: answer/skip the question to continue
+            </div>
+          )}
+        </div>
     </div>
   );
 }
