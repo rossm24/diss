@@ -92,7 +92,7 @@ const CPOP_QUESTIONS = [
   {
     id: "cpop_q6_purpose_of_combine",
     trigger: "COMBINE_FIRST",
-    prompt: "What is the main purpose of the combine step in the Closest Pair algorithm?",
+    prompt: "What is the main purpose of the combine step in the Closest Pair of Points algorithm?",
     options: [
       "To merge two sorted lists of points",
       "To check whether a closer pair exists across the dividing line",

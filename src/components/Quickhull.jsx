@@ -61,7 +61,7 @@ const QH_QUESTIONS = [
   {
     id: "qh_q3_farthest_point",
     triggerAction: "QH_PIVOT_CHOSEN",
-    prompt: "Why do we choose the point furthest from the current edge?",
+    prompt: "Why do we always choose the point furthest from the current edge?",
     options: [
       "It guarantees the largest triangle",
       "It must be part of the convex hull",
@@ -154,9 +154,11 @@ export default function Quickhull() {
 
   // trigger function MUST use refs so the "max 3" cap is real-time.
   const maybeActivateQuestion = (prevState, nextState) => {
+    // if quiz mode off or question already active, do nothing
     if (!teachingEnabledRef.current) return;
     if (activeQRef.current) return;
 
+    // determine question pool
     const poolNow = (runQuestionsRef.current && runQuestionsRef.current.length > 0)
       ? runQuestionsRef.current
       : QH_QUESTIONS;
@@ -168,6 +170,7 @@ export default function Quickhull() {
     const prevCombine = canCombine(prevState);
     const nextCombine = canCombine(nextState);
     if (!prevCombine && nextCombine) {
+      // look for a question designed to trigger now
       const q = poolNow.find((x) => x.triggerCombineReady && !askedIdsRef.current.has(x.id));
       if (q) {
         const nextAsked = new Set(askedIdsRef.current);
@@ -181,9 +184,11 @@ export default function Quickhull() {
       return;
     }
 
+    // convert last action into question trigger type
     const actionType = classifyLastAction(nextState?.lastAction);
     if (!actionType) return;
 
+    // find all questions matching this trigger that haven’t been asked yet, pick one at random if multiple
     const candidates = poolNow.filter(
       (x) => x.triggerAction === actionType && !askedIdsRef.current.has(x.id)
     );
@@ -195,6 +200,7 @@ export default function Quickhull() {
     const nextAsked = new Set(askedIdsRef.current);
     nextAsked.add(q.id);
 
+    // activate question UI
     askedIdsRef.current = nextAsked; // immediate
     setAskedIds(nextAsked);
     setActiveQ({ ...q, status: "unanswered", chosenIndex: null });
