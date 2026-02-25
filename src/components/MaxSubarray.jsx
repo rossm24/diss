@@ -285,7 +285,7 @@ export default function MaxSubarray() {
             <div className="mb-3">
               <div className="flex flex-wrap items-center gap-2">
                 <input
-                  className="flex-1 border rounded px-3 py-2 bg-grey-900 "
+                  className="flex-1 border rounded px-3 py-2 bg-grey-900 text-white"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -510,7 +510,7 @@ export default function MaxSubarray() {
           )}
 
           {/* Summary cards */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 bg-whtie">
             <SummaryCard
               title={`Active node #${active?.id ?? "-"}`}
               s={active?.summary}
@@ -519,7 +519,7 @@ export default function MaxSubarray() {
               title={`Root node #${root?.id ?? "-"}`}
               s={root?.summary}
             />
-            <div className="p-3 rounded-xl border text-sm">
+            <div className="p-3 rounded-xl border text-sm bg-whtie">
               <div className="font-semibold mb-2">Active segment</div>
               {active ? (
                 <>

@@ -39,7 +39,7 @@ const CPOP_QUESTIONS = [
   },
   {
     id: "cpop_q2_stop_at_2_3",
-    trigger: "DIVIDE_FIRST",
+    trigger: "CONQUER_LEAF",
     prompt: "Why do we stop dividing at 2–3 points in this algorithm instead of going down to 1 point like in many other algorithms?",
     options: [
       "Because a single point has no distance to compare, so the algorithm would fail",
@@ -248,6 +248,8 @@ export default function CPoPStepper() {
   const runQuestionsRef = React.useRef([]);
   const activeQRef = React.useRef(null);
   const teachingEnabledRef = React.useRef(false);
+
+  const pendingQueueRef = React.useRef([]); // array of eventTags
 
   React.useEffect(() => { shownIdsRef.current = shownIds; }, [shownIds]);
   React.useEffect(() => { answeredIdsRef.current = answeredIds; }, [answeredIds]);
@@ -471,12 +473,21 @@ export default function CPoPStepper() {
     if (next !== prev) {
       setState(next);
 
+      // which usually happens after conquer, not after clicking combine.
+      const prevCombineReady = canCombine(prev);
+      const nextCombineReady = canCombine(next);
+      if (!prevCombineReady && nextCombineReady) {
+        maybeActivateQuestion(prev, next, "COMBINE_READY");
+      }
+
       // When a leaf first gains a best pair -> Conquer leaf
       const prevActive = prev.nodes[prev.activeNodeId];
       const nextActive = next.nodes[next.activeNodeId];
 
-      const prevLeafSolved = !!prevActive?.best && (prevActive?.ids?.length ?? 99) <= 3;
-      const nextLeafSolved = !!nextActive?.best && (nextActive?.ids?.length ?? 99) <= 3;
+      const prevLeafSolved =
+        !!prevActive?.best && (prevActive?.ids?.length ?? 99) <= 3;
+      const nextLeafSolved =
+        !!nextActive?.best && (nextActive?.ids?.length ?? 99) <= 3;
 
       if (!prevLeafSolved && nextLeafSolved) {
         maybeActivateQuestion(prev, next, "CONQUER_LEAF");
@@ -498,12 +509,6 @@ export default function CPoPStepper() {
       setState(next);
 
       const nextCombineReady = canCombine(next);
-
-      // first time combine becomes available
-      if (!prevCombineReady && nextCombineReady) {
-        maybeActivateQuestion(prev, next, "COMBINE_READY");
-        return;
-      }
 
       // first time we actually combine at the root (or first combine in run)
       if (!prev.nodes?.[0]?.best && next.nodes?.[0]?.best) {
@@ -549,17 +554,61 @@ export default function CPoPStepper() {
       answeredIdsRef.current = nextAnswered;
       setAnsweredIds(nextAnswered);
     }
+
+    activeQRef.current = null;
     setActiveQ(null);
     setShowHint(false);
+
+    setTimeout(() => drainQueuedQuestion(), 0);
   };
 
   const continueAfterAnswer = () => {
+    // IMPORTANT: clear ref immediately (setState is async)
+    activeQRef.current = null;
     setActiveQ(null);
     setShowHint(false);
+
+    // Drain on next tick so React state updates don’t interfere
+    setTimeout(() => drainQueuedQuestion(), 0);
   };
 
+  function pickQuizRunQuestions(bank) {
+    const buckets = {
+      DIVIDE_FIRST: bank.filter((q) => q.trigger === "DIVIDE_FIRST"),
+      COMBINE_FIRST: bank.filter((q) => q.trigger === "COMBINE_FIRST"),
+      COMBINE_READY: bank.filter((q) => q.trigger === "COMBINE_READY"),
+      STRIP_SHOWN: bank.filter((q) => q.trigger === "STRIP_SHOWN"),
+      CONQUER_LEAF: bank.filter((q) => q.trigger === "CONQUER_LEAF"),
+    };
+
+    // Prefer reliable triggers. STRIP_SHOWN is least reliable, only use if needed.
+    const preferred = ["DIVIDE_FIRST", "COMBINE_FIRST", "COMBINE_READY", "CONQUER_LEAF", "STRIP_SHOWN"]
+      .filter((t) => buckets[t].length > 0);
+
+    // pick 3 distinct trigger types
+    const triggers = preferred.slice(0, 3);
+
+    const chosen = triggers.map((t) => {
+      const b = buckets[t];
+      return b[Math.floor(Math.random() * b.length)];
+    });
+
+    return chosen;
+  }
+
+  function drainQueuedQuestion() {
+    if (!teachingEnabledRef.current) return;
+    if (activeQRef.current) return; // still open, can't ask yet
+
+    const nextTag = pendingQueueRef.current.shift();
+    if (!nextTag) return;
+
+    // ask it now
+    maybeActivateQuestion(state, state, nextTag);
+  }
+
   const startNewQuizRun = () => {
-    const chosen = pickRandomN(CPOP_QUESTIONS, 3);
+    const chosen = pickQuizRunQuestions(CPOP_QUESTIONS);
 
     setRunQuestions(chosen);
     setShownIds(new Set());
@@ -572,11 +621,19 @@ export default function CPoPStepper() {
     shownIdsRef.current = new Set();
     answeredIdsRef.current = new Set();
     activeQRef.current = null;
+    pendingQueueRef.current = [];
   };
 
   const maybeActivateQuestion = (prevState, nextState, eventTag) => {
     if (!teachingEnabledRef.current) return;
-    if (activeQRef.current) return;
+    if (activeQRef.current) {
+      // queue it (avoid duplicates back-to-back if you want)
+      const q = pendingQueueRef.current;
+      if (q[q.length - 1] !== eventTag) q.push(eventTag);
+      return;
+    }
+
+    console.log("Queued trigger:", eventTag);
 
     const poolNow =
       (runQuestionsRef.current && runQuestionsRef.current.length > 0)
