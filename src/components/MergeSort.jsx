@@ -20,7 +20,7 @@ const QUESTION_BANK = [
 
   {
     id: 'ms_q2_merge_invariant',
-    trigger: 'AFTER_FIRST_COMBINE', // after first combine
+    trigger: 'AFTER_FIRST_COMBINE', // after the very first merge step 
     prompt:
       'Why is it correct to build the merged array by repeatedly choosing the smallest front element from either subarray?',
     options: [
